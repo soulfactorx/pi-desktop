@@ -110,7 +110,7 @@ npm 11은 설치 스크립트를 기본으로 막습니다. Electron 바이너�
 npm run dev:mock -w @pi-desktop/desktop
 ```
 
-- 저장소의 Pi devDependency(1.5.0)와 OpenAI 호환 mock LLM(포트 18911)을 씁니다.
+- 저장소의 Pi devDependency(1.5.2)와 OpenAI 호환 mock LLM(포트 18911)을 씁니다.
 - 개발 서버로 띄워 Pi 화면을 고치면 바로 바뀝니다. Agent·Mate 작업 공간까지 함께 보려면 `npm run dev:mock:all -w @pi-desktop/desktop`을 씁니다 (빌드한 앱을 띄운다. Agent·Mate 홈도 `.dev/agent-home`·`.dev/mate-home`으로 격리).
 - Pi 설정과 데몬 홈은 저장소의 `.dev/` 아래로 격리되어 실제 `~/.pi`, `~/.pi-desktop`과 섞이지 않습니다.
 - 프롬프트 예: `안녕` → 그대로 echo, `read:package.json` → read 툴 호출 후 내용 응답, `bash:<명령>` → bash 툴 호출, `tool:<툴 이름> <JSON 인자>` → 그 툴 호출 (예: `tool:edit {"path":"a.txt","edits":[{"oldText":"a","newText":"b"}]}`). `fail:529` → 그 HTTP 상태의 오류 응답 (자동 재시도 확인용). 개발 실행에서는 grep·find·ls 툴도 켜져 있습니다.
