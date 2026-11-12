@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell, type MenuItemConstructorOptions } from "electron";
 import { loadWindowState, trackWindowState } from "@pi-desktop/window-state";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { SessionEventNotification } from "@pi-desktop/host-protocol";
 import { IpcChannels } from "../shared/api";
 import { TerminalService } from "./terminal";
@@ -18,6 +18,7 @@ import { initAppTunables } from "./app-tunables";
 import { hostEventHandlers, registerHandlers, type Router } from "./ipc-handlers";
 import { revealWindow, usesSingleInstanceLock } from "./single-instance";
 import { Workspaces } from "./workspaces";
+import { frameNavigation } from "./navigation";
 import { migrateFromOldApps, oldApps } from "./migrate";
 import { isRunnerOnlyLaunch } from "../../../mate/src/main/autostart";
 import { appMenuTemplate as agentMenuTemplate } from "../../../agent/src/main/app-menu";
@@ -105,6 +106,7 @@ function createWindow(): void {
   mainWindow.webContents.on("will-navigate", (event, url) => {
     if (url !== mainWindow?.webContents.getURL()) event.preventDefault();
   });
+  guardFrameNavigation(mainWindow);
 
   // 개발 서버 주소는 개발 실행에서만 쓴다. 설치본이 환경 변수의 주소를 열면 그 페이지가 preload의 앱 API(명령 실행 등)를 갖게 된다.
   if (process.env.ELECTRON_RENDERER_URL && !app.isPackaged) {
@@ -112,6 +114,21 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(join(here, "../renderer/index.html"));
   }
+}
+
+/**
+ * 창 안의 프레임(작업 공간 화면)이 다른 주소로 바뀌지 않게 한다 (navigation.ts).
+ * will-navigate는 맨 위 프레임만 막아서, 작업 공간의 링크를 누르면 그 화면이 웹 페이지로 바뀌어 쓸 수 없게 됐다.
+ */
+function guardFrameNavigation(win: BrowserWindow): void {
+  const rendererRoot = pathToFileURL(join(here, "../renderer")).href;
+  win.webContents.on("will-frame-navigate", (event) => {
+    if (event.isMainFrame) return;
+    const action = frameNavigation(event.url, rendererRoot);
+    if (action === "allow") return;
+    event.preventDefault();
+    if (action === "external") void shell.openExternal(event.url);
+  });
 }
 
 /** SSH 호스트 목록 (앱이 준비되면 만든다). Agent·Mate 작업 공간도 이 목록을 쓴다 */
@@ -164,6 +181,7 @@ function openWorkspaceWindow(id: PluginWorkspaceId): void {
   win.webContents.on("will-navigate", (event, url) => {
     if (url !== win.webContents.getURL()) event.preventDefault();
   });
+  guardFrameNavigation(win);
   // 이 창을 보는 동안 메뉴바는 이 작업 공간의 것 (Agent 메뉴 명령은 이 창으로만 간다)
   win.on("focus", () => setAppMenu({ id, win }));
   workspaces.attachWindow(id, win);

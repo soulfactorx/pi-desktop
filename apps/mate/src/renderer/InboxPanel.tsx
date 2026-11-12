@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { MarkdownText } from "./MarkdownText";
 import { TOPIC_LABELS, type InsightTopic } from "@pi-desktop/mate-runner/activity-types";
 import type { InboxView, Overview } from "../shared/api";
 import type { Act } from "./App";
@@ -73,7 +72,7 @@ export function InboxCard({ item, now, act }: { item: InboxView; now: number; ac
         </span>
       </div>
       <div className="summary markdown">
-        <Markdown remarkPlugins={[remarkGfm]}>{item.summary}</Markdown>
+        <MarkdownText>{item.summary}</MarkdownText>
       </div>
       {item.detail && (
         <>
@@ -82,14 +81,14 @@ export function InboxCard({ item, now, act }: { item: InboxView; now: number; ac
           </button>
           {open && (
             <div className="detail markdown">
-              <Markdown remarkPlugins={[remarkGfm]}>{item.detail}</Markdown>
+              <MarkdownText>{item.detail}</MarkdownText>
             </div>
           )}
         </>
       )}
       {preview && (
         <div className="detail markdown">
-          <Markdown remarkPlugins={[remarkGfm]}>{preview}</Markdown>
+          <MarkdownText>{preview}</MarkdownText>
         </div>
       )}
       {item.change && (
