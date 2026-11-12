@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { MarkdownText } from "./MarkdownText";
 import type { Overview, RunRecord, TranscriptItem } from "../shared/api";
 import type { Act } from "./App";
 import { costLabel, durationLabel, formatTokens, PROFILE_LABELS, REASON_LABELS, relativeTime, STATUS_LABELS } from "./mate-view";
@@ -120,7 +119,7 @@ function TranscriptRow({ item }: { item: TranscriptItem }) {
         <li className="t-assistant">
           <div className="t-label">Pi</div>
           <div className="markdown">
-            <Markdown remarkPlugins={[remarkGfm]}>{item.text}</Markdown>
+            <MarkdownText>{item.text}</MarkdownText>
           </div>
         </li>
       );

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { MarkdownText } from "./MarkdownText";
 import type { ChatImage, ChatLine, InboxView, Overview } from "../shared/api";
 import type { Act } from "./App";
 import { InboxCard } from "./InboxPanel";
@@ -332,7 +331,7 @@ function ChatBubble({
     <div className={`bubble mate kind-${line.kind ?? "reply"}`}>
       {line.kind === "question" && <div className="bubble-label">Mate의 질문</div>}
       <div className="bubble-text markdown">
-        <Markdown remarkPlugins={[remarkGfm]}>{line.text}</Markdown>
+        <MarkdownText>{line.text}</MarkdownText>
       </div>
       {line.kind === "question" &&
         (answer !== undefined ? (
