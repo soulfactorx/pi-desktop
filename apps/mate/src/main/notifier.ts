@@ -58,7 +58,12 @@ export function newNotes(prev: NoteState | undefined, overview: Overview): { not
     notedRuns.add(run.id);
     const ok = run.status === "done";
     const proposals = run.proposals ? ` · 제안 ${run.proposals}건` : "";
-    notes.push({ title: `임무 ${ok ? "완료" : "실패"}: ${run.dutyName}${proposals}`, body: clip((ok ? run.summary : run.error) ?? ""), target: "runs" });
+    // 결과를 인박스에 남긴 실행(보고·제안)은 인박스로, 실패나 남긴 것이 없는 실행은 실행 기록으로 간다
+    notes.push({
+      title: `임무 ${ok ? "완료" : "실패"}: ${run.dutyName}${proposals}`,
+      body: clip((ok ? run.summary : run.error) ?? ""),
+      target: ok && run.proposals ? "inbox" : "runs",
+    });
   }
   for (const item of overview.inbox) {
     if (prev.inbox.has(item.id) || item.status || notedRuns.has(item.runId) || coveredRuns.has(item.runId)) continue;
