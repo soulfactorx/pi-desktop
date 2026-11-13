@@ -5,6 +5,7 @@ import { FolderPicker } from "./FolderPicker";
 import { HostPicker } from "./HostPicker";
 import { setFolderPickOpener } from "./folder-pick";
 import { PiSetupBanner } from "./PiSetup";
+import { MissingPackagesBanner } from "./MissingPackagesBanner";
 import { ActivityView } from "./ActivityView";
 import { ChatView } from "./ChatView";
 import { DutiesView } from "./DutiesView";
@@ -157,6 +158,7 @@ export function App() {
           onUsePiDefault={() => void act(() => window.mate.saveConfig({ model: setup.piDefaultModel! }))}
         />
       )}
+      <MissingPackagesBanner act={act} onOpen={() => setTab("tools")} />
       <main className="content">
         {tab === "chat" && <ChatView overview={overview} now={now} act={act} />}
         {tab === "inbox" && <InboxPanel overview={overview} now={now} act={act} />}

@@ -12,6 +12,7 @@ import { HostPicker } from "./HostPicker";
 import { KnowledgePage } from "./KnowledgePage";
 import { SkillsPage } from "./SkillsPage";
 import { PiSetupBanner } from "./PiSetupBanner";
+import { MissingPackagesBanner } from "./MissingPackagesBanner";
 import { RulesPage } from "./RulesPage";
 import { UsagePage } from "./UsagePage";
 import { HistoryPage, type HistoryView } from "./HistoryPage";
@@ -388,6 +389,7 @@ export function App() {
           </div>
         )}
         {setup && <PiSetupBanner setup={setup} onRefresh={() => guard(refreshSetup)} onError={onError} />}
+        <MissingPackagesBanner connected={connected} onError={onError} onOpen={() => setPage("packages")} />
         {page !== "chat" && (
           <div className="back-bar">
             <button className="small" onClick={() => setPage("chat")}>

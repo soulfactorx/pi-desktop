@@ -244,3 +244,55 @@ export function useImports(api: ImportApi, run: Run, onImported?: () => void) {
       }),
   };
 }
+
+/**
+ * 설치 폴더가 없는 패키지 알림 (Agent·Mate 메인 화면의 띠).
+ * Agent·Mate는 자기 홈의 npm/·git/ 폴더에 설치한 패키지만 Pi에 올리고, 폴더가 없으면 조용히 뺀다.
+ * Pi 작업 공간과 달리 Pi가 빠진 패키지를 다시 설치해 주지 않으므로, 폴더를 지우면 그 도구가 말없이 사라졌다.
+ * 화면을 열 때·창으로 돌아올 때·몇 분마다 목록을 다시 읽고, 띠에서 바로 다시 설치하게 한다.
+ */
+export function useMissingPackages(api: Pick<PackageApi, "list" | "install">, run: Run, enabled = true, intervalMs = 5 * 60_000) {
+  const [missing, setMissing] = useState<PackageView[]>([]);
+  const [busy, setBusy] = useState<string>();
+  const [failed, setFailed] = useState<string>();
+  const check = () =>
+    api.list().then(
+      (list) => setMissing(list.filter((p) => !p.path)),
+      // 연결 전·원격이 아직 준비되지 않았을 때는 다음에 다시 본다
+      () => undefined,
+    );
+  useEffect(() => {
+    if (!enabled) return;
+    void check();
+    const onFocus = () => void check();
+    window.addEventListener("focus", onFocus);
+    const timer = setInterval(onFocus, intervalMs);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      clearInterval(timer);
+    };
+  }, [enabled]);
+  return {
+    missing,
+    busy,
+    failed,
+    /** 빠진 패키지를 차례로 다시 설치한다 */
+    reinstall: () =>
+      run(async () => {
+        setFailed(undefined);
+        try {
+          for (const p of missing) {
+            setBusy(p.name);
+            const r = await api.install(p.source);
+            if (!r.ok) {
+              setFailed(`${p.source}를 다시 설치하지 못했습니다\n${r.output.slice(-800)}`);
+              break;
+            }
+          }
+        } finally {
+          setBusy(undefined);
+          await check();
+        }
+      }),
+  };
+}
