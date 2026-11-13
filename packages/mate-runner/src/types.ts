@@ -166,6 +166,10 @@ export interface RunRecord {
   changeFiles?: number;
   /** Mate 홈 sessions/ 안의 Pi 세션 파일 */
   sessionFile?: string;
+  /** 도구별 호출 수와 오류 수 (예: { fetch_content: { calls: 2, errors: 0 } }) */
+  tools?: Record<string, { calls: number; errors: number }>;
+  /** 설치 폴더가 없어 이 실행에 올라가지 않은 Pi 패키지 (그 패키지의 도구를 쓸 수 없었다) */
+  missingPackages?: string[];
 }
 
 /** 변화 계기가 본 것과, 실행을 기다리는 변화 */

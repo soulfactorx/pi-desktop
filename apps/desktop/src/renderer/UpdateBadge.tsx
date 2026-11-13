@@ -57,3 +57,36 @@ export function UpdateBadge({ state }: { state: UpdateState | undefined }) {
     </button>
   );
 }
+
+/**
+ * Agent·Mate 작업 공간 위의 업데이트 띠. 업데이트 배지는 Pi 작업 공간 위쪽(탭 바)에만 있어,
+ * 다른 작업 공간을 보는 동안에는 메뉴의 "업데이트 확인"으로 시작한 내려받기가 보이지 않았다.
+ * 새 버전을 찾았을 때·내려받는 동안(진행 막대)·내려받은 뒤(다시 시작해 설치)만 보인다.
+ */
+export function UpdateStrip({ state }: { state: UpdateState | undefined }) {
+  const text = updateBadgeText(state);
+  if (!state || !text) return null;
+  const percent = Math.max(0, Math.min(100, Math.round(state.percent ?? 0)));
+  return (
+    <div className={`update-strip ${state.status}`} role="status">
+      <span className="update-strip-text">
+        {state.status === "downloading" ? `Pi Desktop ${state.version ?? "새 버전"} 업데이트 받는 중 ${percent}%` : text}
+      </span>
+      {state.status === "downloading" && (
+        <span className="update-strip-bar" aria-hidden="true">
+          <span style={{ width: `${percent}%` }} />
+        </span>
+      )}
+      {state.status === "downloaded" && (
+        <button type="button" className="small primary" onClick={() => void window.piDesktop.installUpdate()}>
+          다시 시작해 설치
+        </button>
+      )}
+      {state.status === "available" && (
+        <button type="button" className="small" onClick={() => void window.piDesktop.confirmUpdate()}>
+          {state.mode === "auto" ? "업데이트…" : "릴리스 페이지"}
+        </button>
+      )}
+    </div>
+  );
+}

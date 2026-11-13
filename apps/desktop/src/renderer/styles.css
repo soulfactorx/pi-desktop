@@ -171,6 +171,49 @@ textarea {
   border: 0;
 }
 
+/* Agent·Mate 작업 공간: 위에 업데이트 띠, 아래에 화면 프레임 */
+.space-pane.plugin:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+}
+
+.space-pane.plugin .space-frame {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.update-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent, #4a6cf7) 12%, var(--panel));
+  flex-shrink: 0;
+}
+
+.update-strip-text {
+  white-space: nowrap;
+}
+
+.update-strip-bar {
+  flex: 1;
+  max-width: 320px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.update-strip-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent, #4a6cf7);
+  transition: width 0.3s;
+}
+
 /* 워크스페이스 탭 */
 .app-shell {
   display: flex;

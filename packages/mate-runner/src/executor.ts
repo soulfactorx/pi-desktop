@@ -64,7 +64,12 @@ export interface RunOutcome {
   sessionId?: string;
   /** act: 인박스에 올린 변경의 파일 수 */
   changeFiles?: number;
+  /** 도구별 호출 수와 그중 오류 수 (실행 기록에서 어떤 도구를 썼는지 보인다) */
+  tools?: ToolUsage;
 }
+
+/** 도구 이름 → 호출 수·오류 수 */
+export type ToolUsage = Record<string, { calls: number; errors: number }>;
 
 /** pi-isolation 폴더. 개발 중(packages/)에도 설치본(resources/)에도 mate-kit 옆에 있다 */
 export function isolationDirOf(kitDir: string): string {
@@ -150,6 +155,7 @@ export class EventSummary {
   costUsd = 0;
   tokens = 0;
   proposals = 0;
+  tools: ToolUsage = {};
   errorMessage: string | undefined;
   settled = false;
 
@@ -179,6 +185,11 @@ export class EventSummary {
         break;
       }
       case "tool_execution_end":
+        if (typeof event.toolName === "string") {
+          const used = (this.tools[event.toolName] ??= { calls: 0, errors: 0 });
+          used.calls++;
+          if (event.isError) used.errors++;
+        }
         if (event.toolName === PROPOSE_TOOL && !event.isError && event.result?.details?.added) this.proposals++;
         break;
       case "agent_settled":
@@ -238,6 +249,7 @@ export function runPi(launch: PiLaunch, input: RunInput, signal?: AbortSignal): 
         costUsd: summary.costUsd,
         tokens: summary.tokens,
         proposals: summary.proposals,
+        ...(Object.keys(summary.tools).length > 0 ? { tools: summary.tools } : {}),
         ...(summary.sessionId ? { sessionId: summary.sessionId } : {}),
         ...(summary.lastText ? { summary: summary.lastText.slice(0, mateTunables().num("duty.summaryChars")) } : {}),
       };

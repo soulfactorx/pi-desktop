@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { WorkspaceId, WorkspacesState } from "../shared/api";
 import { App } from "./App";
 import { isWebClient } from "./clipboard-images";
+import { UpdateStrip, useUpdateState } from "./UpdateBadge";
 
 /**
  * 휴대폰 웹에서는 Agent·Mate가 같은 기기의 다른 포트에서 돈다. 서버가 아는 주소(127.0.0.1)를
@@ -29,6 +30,8 @@ export function Shell() {
   const [active, setActive] = useState<WorkspaceId>("pi");
   // 한 번이라도 보인 플러그인만 프레임을 만든다 (켜 두기만 하고 열지 않은 화면은 불러오지 않는다)
   const [opened, setOpened] = useState<Record<string, boolean>>({});
+  // 앱 업데이트 상태: Pi 작업 공간은 탭 바의 배지로, Agent·Mate 작업 공간은 위쪽 띠로 보인다
+  const update = useUpdateState();
 
   const refresh = useCallback(() => {
     window.piDesktop.workspacesState().then(setState, () => setState(undefined));
@@ -94,7 +97,8 @@ export function Shell() {
       {plugins
         .filter((p) => opened[p.id])
         .map((p) => (
-          <div key={p.id} className="space-pane" hidden={active !== p.id}>
+          <div key={p.id} className="space-pane plugin" hidden={active !== p.id}>
+            <UpdateStrip state={update} />
             <iframe
               className="space-frame"
               title={p.name}

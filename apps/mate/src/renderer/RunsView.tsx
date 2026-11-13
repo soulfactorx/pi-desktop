@@ -60,6 +60,12 @@ function RunRow({ run, now, onView, onDelete }: { run: RunRecord; now: number; o
         )}
       </div>
       {run.cause && <div className="muted small-text">계기: {run.cause}</div>}
+      {run.tools && <div className="muted small-text">도구: {toolUsageLabel(run.tools)}</div>}
+      {run.missingPackages && (
+        <div className="bad-text small-text">
+          설치 폴더가 없어 올라가지 않은 패키지: {run.missingPackages.join(", ")} (그 도구를 쓸 수 없었습니다)
+        </div>
+      )}
       {text && (
         <div className={`run-text${open ? " open" : ""}${run.error ? " bad-text" : ""}`} onClick={() => setOpen(!open)}>
           {text}
@@ -139,6 +145,14 @@ function TranscriptRow({ item }: { item: TranscriptItem }) {
     case "note":
       return <li className="t-note muted small-text">{item.text}</li>;
   }
+}
+
+/** "fetch_content 2 (오류 1) · bash 16" — 많이 쓴 것부터 */
+export function toolUsageLabel(tools: Record<string, { calls: number; errors: number }>): string {
+  return Object.entries(tools)
+    .sort((a, b) => b[1].calls - a[1].calls)
+    .map(([name, u]) => `${name} ${u.calls}${u.errors ? ` (오류 ${u.errors})` : ""}`)
+    .join(" · ");
 }
 
 /** 도구 인자에서 한 줄 요약 (bash면 명령, read면 경로) */
