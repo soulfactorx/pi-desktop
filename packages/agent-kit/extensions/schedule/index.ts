@@ -111,13 +111,35 @@ function runScheduler(pi: ExtensionAPI, dir: string, path: string): void {
   let timer: ReturnType<typeof setInterval> | undefined;
   let fallbackModel: { provider?: string; model?: string } = {};
 
+  /**
+   * 점검이 겹치지 않게 한다. 한 점검이 예약 파일을 고치는(await) 사이 다음 점검이 돌면, 아직 "시작함"으로 적히지 않은
+   * 예약을 다시 꺼내 같은 예약을 두 번 실행했다 (파일 쓰기가 느린 Windows CI에서 "한 번" 예약이 두 번 돌았다)
+   */
+  let ticking = false;
   const tick = async () => {
+    if (ticking) return;
+    ticking = true;
+    try {
+      await runDue();
+    } finally {
+      ticking = false;
+    }
+  };
+
+  const runDue = async () => {
     const now = new Date();
     const due = dueSchedules(await loadSchedules(path), now).filter((s) => !running.has(s.id));
     for (const schedule of due.slice(0, Math.max(0, agentTunables().num("schedule.maxRunning") - running.size))) {
       const taskId = newTaskId(now);
-      await updateSchedules(path, (all) => all.map((s) => (s.id === schedule.id ? markStarted(s, now, taskId) : s)));
+      // 파일에 적기 전에 먼저 "도는 중"으로 둔다 (다른 길로 이 예약을 다시 꺼내지 않게)
       running.add(schedule.id);
+      try {
+        await updateSchedules(path, (all) => all.map((s) => (s.id === schedule.id ? markStarted(s, now, taskId) : s)));
+      } catch (error) {
+        // 적지 못했으면 다음 점검에서 다시 해 본다
+        running.delete(schedule.id);
+        throw error;
+      }
       const record: TaskRecord = {
         id: taskId,
         title: schedule.title,
