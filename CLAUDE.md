@@ -67,6 +67,7 @@
 |---|---|---|
 | agent-kit `peer-tasks.test.ts` "받는 쪽 스케줄러" | windows에서 받은 작업이 `running`에서 끝나지 않음, 또는 `EPERM: operation not permitted, rename …tasks…json` | **원인 찾음:** Windows는 다른 곳이 읽는 파일로 이름을 바꾸지 못한다. 작업 기록 저장(`tasks/store.ts`)이 잠깐 기다렸다 다시 하게 고쳤다(포크에서 옮김). 그 전에 #115 동기화 겹침, #163 워커 안의 피어 서버도 고쳤다. 또 실패하면 실패 메시지의 "워커 기록"을 본다 |
 | mate-runner `real-pi.test.ts` "git 계기" | Windows에서 시간 초과 | #116 pid 파일 재사용 문제 고침 |
+| agent-kit `schedule.test.ts` "놓친 예약을 사람 없는 워커로 실행하고" | windows Node 22에서 `lastTaskId`가 작업 기록과 다름 (한 번 예약이 두 번 돌았다) | **원인 찾음:** 스케줄러 점검(tick)이 겹쳐 돌아, 앞 점검이 예약 파일에 "시작함"을 적는 사이 다음 점검이 같은 예약을 또 꺼냈다. 점검이 겹치지 않게 하고 파일에 적기 전에 "도는 중"으로 둔다 (2026-11-13) |
 | host-agent `writer.test.ts` "연 앱이 입력하고, 나중에 붙은 앱은 읽기 전용이다가 제어를 가져온다" | ubuntu Node 22에서 `JsonRpcError: 연결이 닫혔습니다` | 아직 원인 모름. #176에서 한 번 실패, 다시 돌리니 통과 (2026-11-03) |
 
 새로 이런 테스트를 만나면 이 표에 더한다.
