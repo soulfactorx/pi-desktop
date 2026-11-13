@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 import { IpcChannels, type PluginWorkspaceId, type WorkspaceId, type WorkspacesState } from "../shared/api";
 import { createAgentMain, type AgentMain, type SshHostList } from "../../../agent/src/main/agent-main";
 import { IpcChannels as AgentChannels } from "../../../agent/src/shared/api";
+import { IpcChannels as MateChannels } from "../../../mate/src/shared/api";
+import type { NotificationRoute } from "./app-notification";
 import { createMateMain, type MateMain } from "../../../mate/src/main/mate-main";
 import { getAutostart, setAutostart } from "../../../mate/src/main/autostart";
 
@@ -154,7 +156,24 @@ export class Workspaces {
     }
   }
 
-  /** 플러그인이 알림을 띄웠다: 그 작업 공간을 보고 있지 않으면 막대에 수를 올린다 (셸의 알림 모음) */
+  /**
+   * 창으로 돌아왔다 (포커스): 보고 있는 작업 공간의 읽지 않은 수를 지운다.
+   * 창을 안 보는 동안 온 알림은 그 작업 공간을 보고 있어도 수가 올라가므로, 돌아오면 본 것으로 친다.
+   * id를 주면 새 창으로 연 그 작업 공간 창이다
+   */
+  focused(id: WorkspaceId = this.active): void {
+    if (id === "pi" || !this.unread[id]) return;
+    this.unread[id] = 0;
+    this.host.sendToShell(IpcChannels.workspacesChanged);
+  }
+
+  /** 알림 센터에서 누른 알림이 가리키는 곳으로 간다 (app-notification.ts) */
+  openRoute(route: NotificationRoute): void {
+    if (!this.enabled(route.workspace)) return;
+    if (route.workspace === "mate") this.reveal("mate", () => this.sendTo("mate", MateChannels.openTab, route.tab));
+    else this.reveal("agent", () => this.sendTo("agent", AgentChannels.menuCommand, route.command));
+  }
+
   /** 새 창으로 연 작업 공간 창 (없거나 닫혔으면 undefined) */
   windowOf(id: PluginWorkspaceId): BrowserWindow | undefined {
     const win = this.detached.get(id);
