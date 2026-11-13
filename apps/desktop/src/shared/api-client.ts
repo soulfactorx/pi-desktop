@@ -130,6 +130,8 @@ export function createPiDesktopApi(t: ApiTransport, shell: PiDesktopApi["shell"]
     onShowWorkspace: (listener) => t.on(IpcChannels.showWorkspace, (id) => listener(id as never)),
     revealWorkspace: (id) => t.invoke(IpcChannels.revealWorkspace, id),
     onWorkspacesChanged: (listener) => t.on(IpcChannels.workspacesChanged, () => listener()),
+    showNotification: (input) => t.invoke(IpcChannels.showNotification, input),
+    onNotificationClicked: (listener) => t.on(IpcChannels.notificationClicked, (tabId) => listener(String(tabId))),
     onUpdateState: (listener) => t.on(IpcChannels.updateStateChanged, (state) => listener(state as Parameters<typeof listener>[0])),
     logAction: (entry) => t.invoke(IpcChannels.logAction, entry),
     importUpdate: (hostId, target) => t.invoke(IpcChannels.importUpdate, hostId, target),

@@ -64,8 +64,17 @@ export function App() {
     } else {
       setAttention((prev) => ({ ...prev, [id]: kind }));
     }
-    notify(status.title, kind, () => activate(id));
+    notify(id, status.title, kind, () => activate(id));
   }, [activate]);
+
+  // main이 띄운 알림을 눌렀다 (Windows 알림 센터에서 누른 것도): 그 탭이 아직 있으면 연다
+  useEffect(
+    () =>
+      window.piDesktop.onNotificationClicked((tabId) => {
+        if (statusesRef.current[tabId]) activate(tabId);
+      }),
+    [activate],
+  );
 
   const newTab = useCallback(() => {
     const id = `t${Date.now().toString(36)}`;
@@ -292,11 +301,26 @@ export function App() {
   );
 }
 
-/** 숨긴 탭의 소식을 OS 알림으로 띄운다. 누르면 그 탭을 연다. 알림 권한이 없으면 탭 표시만 남는다. */
-function notify(title: string, kind: Attention, onClick: () => void): void {
+/**
+ * 숨긴 탭의 소식을 OS 알림으로 띄운다. 누르면 그 탭을 연다. 알림 권한이 없으면 탭 표시만 남는다.
+ * PC 앱은 main이 띄운다: 화면(브라우저)의 알림은 Windows 알림 센터로 넘어간 뒤 눌러도 앱으로 오지 않는다.
+ * 웹(main이 false)은 브라우저 알림을 쓴다
+ */
+function notify(tabId: string, title: string, kind: Attention, onClick: () => void): void {
+  const body = kind === "input" ? "답을 기다리고 있습니다." : "작업이 끝났습니다.";
+  window.piDesktop
+    .showNotification({ title: `Pi Desktop — ${title}`, body, silent: kind === "done", tabId })
+    .then(
+      (shown) => {
+        if (!shown) browserNotify(title, body, kind, onClick);
+      },
+      () => browserNotify(title, body, kind, onClick),
+    );
+}
+
+function browserNotify(title: string, body: string, kind: Attention, onClick: () => void): void {
   try {
     if (typeof Notification === "undefined" || Notification.permission === "denied") return;
-    const body = kind === "input" ? "답을 기다리고 있습니다." : "작업이 끝났습니다.";
     const notification = new Notification(`Pi Desktop — ${title}`, { body, silent: kind === "done" });
     notification.onclick = () => {
       window.focus();

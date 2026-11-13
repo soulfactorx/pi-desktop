@@ -16,16 +16,18 @@ export type NotificationRoute =
   /** Mate 작업 공간의 탭 */
   | { workspace: "mate"; tab: "chat" | "runs" | "inbox" }
   /** Agent 작업 공간의 메뉴 명령 (page:tasks, open-chat:<세션 id> …) */
-  | { workspace: "agent"; command: string };
+  | { workspace: "agent"; command: string }
+  /** Pi 작업 공간의 탭 */
+  | { workspace: "pi"; tab: string };
 
 export function routeUrl(route: NotificationRoute): string {
-  const target = route.workspace === "mate" ? route.tab : route.command;
+  const target = route.workspace === "agent" ? route.command : route.tab;
   return `${APP_PROTOCOL}://open/${route.workspace}/${encodeURIComponent(target)}`;
 }
 
 /** 앱 주소를 갈 곳으로 푼다. 모르는 주소면 undefined */
 export function parseRoute(url: string): NotificationRoute | undefined {
-  const match = new RegExp(`^${APP_PROTOCOL}://open/(mate|agent)/([^/?#]+)/?$`).exec(url.trim());
+  const match = new RegExp(`^${APP_PROTOCOL}://open/(mate|agent|pi)/([^/?#]+)/?$`).exec(url.trim());
   if (!match) return undefined;
   let target: string;
   try {
@@ -33,6 +35,8 @@ export function parseRoute(url: string): NotificationRoute | undefined {
   } catch {
     return undefined;
   }
+  // Pi 탭 id는 화면이 만든 짧은 글자다 (t + 시각)
+  if (match[1] === "pi") return /^[\w-]{1,40}$/.test(target) ? { workspace: "pi", tab: target } : undefined;
   if (match[1] === "mate") return target === "chat" || target === "runs" || target === "inbox" ? { workspace: "mate", tab: target } : undefined;
   // 메뉴 명령은 page:이름, open-chat:세션 id, new-chat 같은 짧은 글자만 받는다
   return /^[\w:.-]{1,200}$/.test(target) ? { workspace: "agent", command: target } : undefined;
@@ -50,13 +54,14 @@ const escapeXml = (text: string) =>
   text.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c]!);
 
 /** 누르면 앱 주소를 여는 Windows 토스트 (알림 센터에서 눌러도 앱이 그 주소를 받는다) */
-export function toastXml(title: string, body: string, url: string): string {
+export function toastXml(title: string, body: string, url: string, silent = false): string {
   return [
     `<toast activationType="protocol" launch="${escapeXml(url)}">`,
     "<visual><binding template=\"ToastGeneric\">",
     `<text>${escapeXml(title)}</text>`,
     body ? `<text>${escapeXml(body)}</text>` : "",
     "</binding></visual>",
+    silent ? '<audio silent="true"/>' : "",
     "</toast>",
   ].join("");
 }
@@ -68,12 +73,13 @@ const KEEP_MAX = 50;
 /**
  * 알림을 띄운다. onClick은 화면에 떠 있는 알림을 눌렀을 때, route는 Windows 알림 센터에서 눌렀을 때 쓴다.
  */
-export function showAppNotification(options: { title: string; body: string; route?: NotificationRoute; onClick: () => void }): void {
+export function showAppNotification(options: { title: string; body: string; silent?: boolean; route?: NotificationRoute; onClick: () => void }): void {
   const { title, body, route, onClick } = options;
   const notification = new Notification({
     title,
     body,
-    ...(process.platform === "win32" && route ? { toastXml: toastXml(title, body, routeUrl(route)) } : {}),
+    ...(options.silent ? { silent: true } : {}),
+    ...(process.platform === "win32" && route ? { toastXml: toastXml(title, body, routeUrl(route), options.silent) } : {}),
   });
   kept.add(notification);
   if (kept.size > KEEP_MAX) kept.delete(kept.values().next().value!);
