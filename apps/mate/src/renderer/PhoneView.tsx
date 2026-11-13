@@ -47,7 +47,33 @@ export function PhoneView({ overview, act, remoteHost }: { overview: Overview; a
           앱이 다시 붙을 때까지 휴대폰 연결이 쉽니다.
         </p>
       )}
-      {view.hasToken && !overview.runner.phone && overview.runner.alive && (
+      {view.tokenUnreadable ? (
+        <div className="pairing">
+          <div className="bad-text">
+            저장된 봇 토큰을 이 앱이 풀 수 없어 휴대폰 연결이 쉬고 있습니다. 0.7.0 전에 단독 Mate 앱에서 저장한 토큰이거나, 다른 PC에서 저장한
+            토큰입니다 (토큰은 저장한 앱의 OS 키체인 키로 암호화됩니다).
+          </div>
+          <div className="muted small-text">
+            BotFather의 <code>/mybots</code> → @{view.botName} → API Token에서 토큰을 다시 받아 넣으세요. 같은 봇이면 휴대폰 연결은 그대로 이어집니다.
+          </div>
+          <div className="row">
+            <input className="grow" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="봇 토큰" />
+            <button
+              className="primary"
+              disabled={!token.trim() || !view.keychain}
+              onClick={() =>
+                run(async () => {
+                  const next = await window.mate.telegramSetToken(token);
+                  setToken("");
+                  return next;
+                })
+              }
+            >
+              다시 저장
+            </button>
+          </div>
+        </div>
+      ) : view.hasToken && !overview.runner.phone && overview.runner.alive && (
         <div className="bad-text small-text">
           휴대폰 연결이 쉬고 있습니다. 실행기가 아직 토큰을 받지 못했습니다{remoteHost ? " (다른 PC에서 저장한 토큰이면 이 PC에서는 풀 수 없으니 토큰을 다시 저장하세요)" : ""}.
         </div>

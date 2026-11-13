@@ -32,15 +32,25 @@ async function tg<T>(token: string, method: string, params: Record<string, unkno
   return body.result as T;
 }
 
+/**
+ * 저장한 토큰을 푼다. 풀 수 없으면 undefined.
+ * 키체인 키는 앱마다 다르다(Windows: 앱 데이터 폴더의 Local State). 그래서 0.7.0 전에 단독 Mate 앱이 저장한 토큰은
+ * Pi Desktop이 풀 수 없다. 다른 PC에서 저장한 토큰도 마찬가지다. 그때는 토큰을 다시 넣어야 한다 (telegramView의 tokenUnreadable).
+ */
+function decryptToken(tokenEnc: string | undefined): string | undefined {
+  if (!tokenEnc || !safeStorage.isEncryptionAvailable()) return undefined;
+  try {
+    return safeStorage.decryptString(Buffer.from(tokenEnc, "base64"));
+  } catch {
+    return undefined;
+  }
+}
+
 /** 실행기에 넘길 환경 변수 (토큰이 있으면). 풀 수 없으면 비운다 */
 export async function telegramEnv(store: TelegramStore): Promise<Record<string, string>> {
   const { telegram } = await store.config();
-  if (!telegram.tokenEnc || !safeStorage.isEncryptionAvailable()) return {};
-  try {
-    return { [TELEGRAM_TOKEN_ENV]: safeStorage.decryptString(Buffer.from(telegram.tokenEnc, "base64")) };
-  } catch {
-    return {};
-  }
+  const token = decryptToken(telegram.tokenEnc);
+  return token ? { [TELEGRAM_TOKEN_ENV]: token } : {};
 }
 
 /** 토큰을 확인(getMe)하고 암호화해 저장한다. 실행기는 호출한 쪽이 다시 띄운다 */
@@ -61,10 +71,15 @@ export async function saveTelegramToken(store: TelegramStore, token: string): Pr
       tokenEnc: safeStorage.encryptString(trimmed).toString("base64"),
       botName: me.username,
       tokenHint: trimmed.slice(-4),
-      // 다른 봇으로 바꾸면 기존 연결은 버린다
-      pairEpoch: current.telegram.pairEpoch + 1,
+      // 다른 봇으로 바꾸면 기존 연결은 버린다. 같은 봇의 토큰을 다시 넣은 것이면(풀 수 없게 된 토큰을 다시 저장) 연결을 그대로 둔다
+      pairEpoch: sameBot(current.telegram.botName, me.username) ? current.telegram.pairEpoch : current.telegram.pairEpoch + 1,
     },
   });
+}
+
+/** 같은 봇인가 (텔레그램 사용자 이름은 대소문자를 가리지 않는다) */
+export function sameBot(saved: string | undefined, next: string): boolean {
+  return !!saved && saved.toLowerCase() === next.toLowerCase();
 }
 
 /** 토큰과 연결을 지운다 */
@@ -97,8 +112,9 @@ export async function unpairTelegram(store: TelegramStore): Promise<void> {
 
 /** 연결된 채팅으로 시험 알림을 보낸다 */
 export async function sendTelegramTest(store: TelegramStore): Promise<void> {
-  const env = await telegramEnv(store);
-  const token = env[TELEGRAM_TOKEN_ENV];
+  const { telegram } = await store.config();
+  const token = decryptToken(telegram.tokenEnc);
+  if (telegram.tokenEnc && !token) throw new Error("저장된 봇 토큰을 이 앱이 풀 수 없습니다. 휴대폰 화면에서 토큰을 다시 넣어 주세요");
   const state = await store.remoteState();
   if (!token || !state.chatId) throw new Error("먼저 휴대폰을 연결하세요");
   await tg(token, "sendMessage", { chat_id: state.chatId, text: "🔔 Pi Desktop Mate 시험 알림입니다. 이 채팅으로 알림이 옵니다." });
@@ -110,6 +126,7 @@ export async function telegramView(store: TelegramStore, now = Date.now()): Prom
   const paired = !!state.chatId && state.epoch === t.pairEpoch;
   return {
     hasToken: !!t.tokenEnc,
+    ...(t.tokenEnc && safeStorage.isEncryptionAvailable() && !decryptToken(t.tokenEnc) ? { tokenUnreadable: true } : {}),
     ...(t.botName ? { botName: t.botName } : {}),
     ...(t.tokenHint ? { tokenHint: t.tokenHint } : {}),
     paired,

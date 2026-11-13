@@ -124,6 +124,8 @@ export const IpcChannels = {
 /** 휴대폰(텔레그램) 연결 상태 */
 export interface TelegramView {
   hasToken: boolean;
+  /** 토큰이 저장돼 있지만 이 앱이 풀 수 없다 (단독 Mate 앱이나 다른 PC에서 저장한 토큰). 다시 넣어야 한다 */
+  tokenUnreadable?: boolean;
   botName?: string;
   tokenHint?: string;
   paired: boolean;
