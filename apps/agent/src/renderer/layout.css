@@ -487,12 +487,84 @@ code.copy {
 }
 
 /* 대화가 아닌 화면 위의 돌아가기 띠 */
-.back-bar {
+/* 위쪽 탭 줄: 기능 화면을 한눈에 보고 바로 고른다 (Mate와 같은 모양, ScrollTabs) */
+.page-tabs {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 16px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+
+.tabs-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs button {
+  flex-shrink: 0;
+  white-space: nowrap;
+  background: none;
+  border-color: transparent;
+  padding: 4px 10px;
+}
+
+.tabs button.active {
+  background: var(--panel-2, var(--bg));
+  border-color: var(--border);
+  color: var(--accent);
+}
+
+.tabs-wrap.more-left .tabs {
+  mask-image: linear-gradient(to right, transparent 0, #000 36px);
+}
+
+.tabs-wrap.more-right .tabs {
+  mask-image: linear-gradient(to left, transparent 0, #000 36px);
+}
+
+.tabs-wrap.more-left.more-right .tabs {
+  mask-image: linear-gradient(to right, transparent 0, #000 36px, #000 calc(100% - 36px), transparent 100%);
+}
+
+.tabs-more {
+  display: none;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 13px;
+  line-height: 1;
+}
+
+.tabs-more.left {
+  left: 0;
+}
+
+.tabs-more.right {
+  right: 0;
+}
+
+.tabs-wrap.more-left .tabs-more.left,
+.tabs-wrap.more-right .tabs-more.right {
+  display: block;
 }
 
 /* 폴더 메뉴 (새 대화·폴더 옮기기) */
@@ -1124,4 +1196,11 @@ button.danger {
   box-sizing: border-box;
   font: 12px/1.5 ui-monospace, Consolas, monospace;
   resize: vertical;
+}
+
+/* 휴대폰 웹을 넓은 화면으로 열면 오른쪽 위에 ⋮ 메뉴 단추가 떠 있다. 탭 줄 끝이 가리지 않게 비워 둔다 */
+@media (min-width: 721px) {
+  :root[data-client="web"] .page-tabs {
+    padding-right: 60px;
+  }
 }
