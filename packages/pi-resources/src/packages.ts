@@ -104,6 +104,20 @@ export function packageDirs(home: string): string[] {
   }
 }
 
+/**
+ * settings.json에는 있지만 설치 폴더가 없는 패키지 (폴더를 지웠거나 설치가 깨졌다).
+ * 세션에는 올라가지 않으므로 그 도구도 없다. 실행 기록과 화면에서 "다시 설치"를 알리는 데 쓴다.
+ */
+export function missingPackages(home: string): string[] {
+  try {
+    const sources = readSettingsPackages(readFileSync(join(home, "settings.json"), "utf8"));
+    const paths = readPaths(readFileSync(join(home, PACKAGE_PATHS_FILE), "utf8"));
+    return sources.filter((s) => !paths[s] || !existsSync(paths[s]!));
+  } catch {
+    return [];
+  }
+}
+
 /** 이 홈을 Pi 설정 폴더로 삼아 pi 명령을 돌린다 (설치·제거·목록) */
 export function runPiInHome(run: PiRun, home: string, args: string[], timeoutMs = 10 * 60_000): Promise<{ ok: boolean; output: string }> {
   return new Promise((done) => {

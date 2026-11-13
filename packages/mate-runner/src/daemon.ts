@@ -1,4 +1,4 @@
-import { packageDirs, packageToolNames } from "@pi-desktop/pi-resources";
+import { missingPackages, packageDirs, packageToolNames } from "@pi-desktop/pi-resources";
 import { createHash } from "node:crypto";
 import { watch, type FSWatcher } from "node:fs";
 import { appendFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -141,6 +141,9 @@ export async function runDuty(
   };
   await writeRun(paths, record);
   await log(paths, `run start ${runId} duty=${duty.id} reason=${reason} model=${record.model}`);
+  // 설치 폴더가 없는 패키지는 세션에 올라가지 않아 그 도구를 쓸 수 없다 (스킬·MCP 탭의 "다시 설치")
+  const missing = missingPackages(paths.home);
+  if (missing.length > 0) await log(paths, `warn package folder missing (tools unavailable, reinstall in 스킬·MCP): ${missing.join(", ")}`);
 
   const exec = options.exec ?? execCommand;
   let outcome: RunOutcome;

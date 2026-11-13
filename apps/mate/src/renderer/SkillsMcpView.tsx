@@ -227,6 +227,16 @@ export function SkillsMcpView({ act }: { act: Act }) {
                 {!p.path && " · 설치 폴더를 찾지 못함"}
               </span>
               <span className="right">
+                {!p.path && (
+                  <button
+                    className="small primary"
+                    disabled={Boolean(pkgs.busy)}
+                    title="설치 폴더(npm·git)가 없어 이 패키지의 도구가 임무·대화에 올라가지 않습니다. 같은 출처로 다시 설치합니다"
+                    onClick={() => pkgs.install(p.source)}
+                  >
+                    다시 설치
+                  </button>
+                )}
                 <button className="small" disabled={Boolean(pkgs.busy)} onClick={() => pkgs.remove(p.source, `${p.name} 패키지를 지울까요?`)}>
                   지우기
                 </button>
