@@ -106,8 +106,8 @@
     grid-template-columns: 1fr;
   }
 
-  .back-bar {
-    flex-wrap: wrap;
+  .page-tabs {
+    padding: 4px 6px;
   }
 
   /* 입력창: 화면 끝까지 넓게, 버튼은 손가락으로 누르기 쉽게 */

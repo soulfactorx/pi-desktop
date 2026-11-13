@@ -23,9 +23,25 @@ import { SettingsPage } from "./SettingsPage";
 import { TasksPanel } from "./TasksPanel";
 import { folderName, lastFolder, recentFolders, rememberFolder, setRecentScope } from "./recent-folders";
 import { useAgentSession } from "./use-agent-session";
+import { ScrollTabs } from "../../../mate/src/renderer/ScrollTabs";
 
-/** 화면. 대화 말고는 메뉴바(보기)에서 연다 (main/app-menu.ts) */
+/** 화면. 위쪽 탭 줄에서 고르고, 메뉴바(보기)와 단축키로도 연다 (main/app-menu.ts) */
 type Page = "chat" | "tasks" | "memory" | "skills" | "rules" | "usage" | "history" | "mcp" | "packages" | "network" | "settings";
+
+/** 위쪽 탭 줄 (메뉴바 "보기"와 같은 순서·이름. 단축키는 툴팁에) */
+const PAGE_TABS: Array<{ page: Page; label: string; key?: string }> = [
+  { page: "chat", label: "대화", key: "Ctrl+1" },
+  { page: "tasks", label: "작업·예약", key: "Ctrl+2" },
+  { page: "memory", label: "지식베이스", key: "Ctrl+3" },
+  { page: "skills", label: "스킬", key: "Ctrl+9" },
+  { page: "rules", label: "승인", key: "Ctrl+4" },
+  { page: "usage", label: "사용량", key: "Ctrl+5" },
+  { page: "history", label: "지난 대화", key: "Ctrl+6" },
+  { page: "mcp", label: "웹 검색·MCP", key: "Ctrl+7" },
+  { page: "packages", label: "확장·가져오기" },
+  { page: "network", label: "네트워크", key: "Ctrl+8" },
+  { page: "settings", label: "설정", key: "Ctrl+," },
+];
 
 /** 호스트 id를 사람이 읽는 이름으로 ("wsl:Ubuntu" → "WSL: Ubuntu") */
 export function hostLabel(id: string): string {
@@ -355,6 +371,21 @@ export function App() {
       <ResizeHandle storageKey="pi-agent.nav-width" cssVar="--nav-width" defaultWidth={230} min={180} max={480} label="옆 메뉴 너비" />
 
       <main className="main">
+        <div className="page-tabs">
+          <ScrollTabs active={page}>
+            {PAGE_TABS.map((t) => (
+              <button
+                key={t.page}
+                type="button"
+                className={page === t.page ? "active" : ""}
+                title={t.key ? `${t.label} (${t.key})` : t.label}
+                onClick={() => (t.page === "history" ? openHistory("history") : setPage(t.page))}
+              >
+                {t.label}
+              </button>
+            ))}
+          </ScrollTabs>
+        </div>
         {error && (
           <div className="error-banner" role="alert">
             <span>{error}</span>
@@ -390,14 +421,6 @@ export function App() {
         )}
         {setup && <PiSetupBanner setup={setup} onRefresh={() => guard(refreshSetup)} onError={onError} />}
         <MissingPackagesBanner connected={connected} onError={onError} onOpen={() => setPage("packages")} />
-        {page !== "chat" && (
-          <div className="back-bar">
-            <button className="small" onClick={() => setPage("chat")}>
-              ← 대화로
-            </button>
-            <span className="muted small-text">기능 화면(작업·지식베이스·스킬·승인·사용량·지난 대화·웹 검색·네트워크·설정)은 메뉴바의 "보기"에서 엽니다</span>
-          </div>
-        )}
         {page === "chat" && (
           <ChatPage
             agent={agent}
