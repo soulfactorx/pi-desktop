@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isGrant, isProfile, isToolGrant } from "@pi-desktop/mate-kit";
 import type { MatePaths } from "./paths";
@@ -257,18 +257,107 @@ export async function getDuty(paths: MatePaths, id: string): Promise<Duty | unde
   return typeof duty === "string" ? undefined : duty;
 }
 
-export async function saveDuty(paths: MatePaths, raw: unknown): Promise<Duty> {
+/**
+ * 임무를 저장한다. by를 주면 앞의 것과 견줘 바뀐 것을 임무 변경 기록(duty-log.jsonl)에 남긴다.
+ * Mate 대화는 이 기록으로 사용자가 앱에서 고친 것을 알고 그것을 전제로 답한다.
+ */
+export async function saveDuty(paths: MatePaths, raw: unknown, by?: DutyChangeBy): Promise<Duty> {
   const duty = normalizeDuty(raw);
   if (typeof duty === "string") throw new Error(duty);
+  const before = by ? await getDuty(paths, duty.id) : undefined;
   await writeJsonAtomic(join(paths.duties, `${duty.id}.json`), duty);
+  if (by) {
+    const changes = dutyChanges(before, duty);
+    if (!before || changes.length > 0) {
+      await appendDutyLog(paths, { at: Date.now(), dutyId: duty.id, name: duty.name, by, action: before ? "update" : "create", changes });
+    }
+  }
   return duty;
 }
 
 /** 임무를 휴지통으로 옮긴다 (되살릴 수 있다). 이미 쌓인 제안과 실행 기록은 그대로 둔다 */
-export async function deleteDuty(paths: MatePaths, id: string): Promise<void> {
+export async function deleteDuty(paths: MatePaths, id: string, by?: DutyChangeBy): Promise<void> {
   if (!isDutyId(id)) throw new Error("잘못된 임무 id입니다");
   const duty = await getDuty(paths, id);
   await moveToTrash(paths, { kind: "duty", title: duty?.name ?? id, detail: duty?.cwd ?? "" }, [{ path: join(paths.duties, `${id}.json`) }]);
+  if (by) await appendDutyLog(paths, { at: Date.now(), dutyId: id, name: duty?.name ?? id, by, action: "delete", changes: [] });
+}
+
+// ── 임무 변경 기록 ──
+
+/** 누가 바꿨나: 앱 화면(사용자), Mate 대화, 휴대폰 대화, 허용 질문에 답함 */
+export type DutyChangeBy = "app" | "chat" | "phone" | "permission";
+
+export interface DutyChange {
+  field: string;
+  before?: string;
+  after?: string;
+}
+
+export interface DutyLogEntry {
+  at: number;
+  dutyId: string;
+  name: string;
+  by: DutyChangeBy;
+  action: "create" | "update" | "delete";
+  changes: DutyChange[];
+}
+
+/** 기록에 남길 임무 항목과 보일 이름 */
+const DUTY_FIELDS: Array<[keyof Duty, string]> = [
+  ["name", "이름"],
+  ["prompt", "지시"],
+  ["cwd", "폴더"],
+  ["trigger", "실행 시점"],
+  ["profile", "방식"],
+  ["enabled", "켜기"],
+  ["model", "모델"],
+  ["grants", "허용한 명령"],
+  ["mcpServers", "MCP 서버"],
+  ["skills", "스킬"],
+  ["timeoutSec", "시간 제한"],
+  ["maxCostUsd", "비용 상한"],
+];
+
+const LOG_VALUE_CHARS = 400;
+const logValue = (value: unknown): string | undefined => {
+  if (value === undefined) return undefined;
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  return text.length > LOG_VALUE_CHARS ? `${text.slice(0, LOG_VALUE_CHARS)}…` : text;
+};
+
+/** 앞뒤 임무에서 바뀐 항목 (처음 만든 것이면 빈 목록) */
+export function dutyChanges(before: Duty | undefined, after: Duty): DutyChange[] {
+  if (!before) return [];
+  const changes: DutyChange[] = [];
+  for (const [key, label] of DUTY_FIELDS) {
+    const a = logValue(before[key]);
+    const b = logValue(after[key]);
+    if (a === b) continue;
+    changes.push({ field: label, ...(a !== undefined ? { before: a } : {}), ...(b !== undefined ? { after: b } : {}) });
+  }
+  return changes;
+}
+
+export async function appendDutyLog(paths: MatePaths, entry: DutyLogEntry): Promise<void> {
+  await mkdir(dirname(paths.dutyLog), { recursive: true });
+  await appendFile(paths.dutyLog, `${JSON.stringify(entry)}\n`, "utf8");
+}
+
+/** 최근 임무 변경 (오래된 것이 앞) */
+export async function readDutyLog(paths: MatePaths, limit = 20): Promise<DutyLogEntry[]> {
+  const text = await readFile(paths.dutyLog, "utf8").catch(() => "");
+  const entries: DutyLogEntry[] = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const e = JSON.parse(line) as DutyLogEntry;
+      if (e && typeof e.dutyId === "string" && typeof e.at === "number") entries.push(e);
+    } catch {
+      // 깨진 줄은 넘긴다
+    }
+  }
+  return entries.slice(-limit);
 }
 
 // ── 실행 요청 ("지금 실행") ──

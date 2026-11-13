@@ -11,7 +11,7 @@ import { ChatView } from "./ChatView";
 import { DutiesView } from "./DutiesView";
 import { PhoneView } from "./PhoneView";
 import { InboxPanel } from "./InboxPanel";
-import { splitInbox, STATUS_LABELS } from "./mate-view";
+import { splitInbox, STATUS_LABELS, userDuties } from "./mate-view";
 import { RunsView } from "./RunsView";
 import { UsageView } from "./UsageView";
 import { SettingsView } from "./SettingsView";
@@ -110,7 +110,7 @@ export function App() {
             인박스{freshCount > 0 && <span className="badge">{freshCount}</span>}
           </button>
           <button className={tab === "duties" ? "active" : ""} onClick={() => setTab("duties")}>
-            임무 <span className="count">{overview.duties.length}</span>
+            임무 <span className="count">{userDuties(overview.duties).length}</span>
           </button>
           <button className={tab === "activity" ? "active" : ""} onClick={() => setTab("activity")}>
             활동{overview.config.observe.enabled && <span className="count"> 관찰 중</span>}

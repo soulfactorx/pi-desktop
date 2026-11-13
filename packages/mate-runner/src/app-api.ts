@@ -149,12 +149,12 @@ export function mateAppApi(ctx: MateAppContext): MateAppApi {
       if (draft.id) {
         const existing = await getDuty(paths, draft.id);
         if (!existing) throw new Error("임무를 찾지 못했습니다");
-        return saveDuty(paths, { ...existing, ...draft, id: existing.id, createdAt: existing.createdAt, updatedAt: now });
+        return saveDuty(paths, { ...existing, ...draft, id: existing.id, createdAt: existing.createdAt, updatedAt: now }, "app");
       }
       const id = dutyIdFrom(draft.name, (await listDuties(paths)).map((d) => d.id));
-      return saveDuty(paths, { ...draft, id, createdAt: now });
+      return saveDuty(paths, { ...draft, id, createdAt: now }, "app");
     },
-    deleteDuty: async (id: string) => void (await deleteDuty(paths, id)),
+    deleteDuty: async (id: string) => void (await deleteDuty(paths, id, "app")),
     runNow: async (id: string) => {
       if (!isDutyId(id)) throw new Error("잘못된 임무 id입니다");
       await addRequest(paths, id);

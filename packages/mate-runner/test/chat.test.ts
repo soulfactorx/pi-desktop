@@ -186,12 +186,22 @@ describe("ChatAgent", () => {
     expect(await chatSystemPrompt(paths, Date.now())).not.toContain("찾지 못했어요");
   });
 
+  it("사용자가 앱에서 고친 임무 내역이 맥락에 들어간다", async () => {
+    const duty = { id: "hn", name: "HN 요약", enabled: true, cwd: paths.home, prompt: "인기 10개", profile: "observe", trigger: { kind: "manual" }, createdAt: 1 };
+    await saveDuty(paths, duty, "app");
+    await saveDuty(paths, { ...duty, prompt: "인기 10개와 최신 20개" }, "app");
+    const prompt = await chatSystemPrompt(paths, Date.now());
+    expect(prompt).toMatch(/최근 임무 변경[\s\S]*앱: "HN 요약" \(hn\) 고침 — 지시: "인기 10개" → "인기 10개와 최신 20개"/);
+  });
+
   it("답하지 않은 질문은 맥락에 들어가고, 같은 질문은 다시 묻지 않는다", async () => {
     expect(await appendChatQuestion(paths.chat, { text: "테스트를 추가할까요?", options: ["예", "아니요"] })).toBe(true);
     expect(await appendChatQuestion(paths.chat, { text: "테스트를  추가할까요?" })).toBe(false);
     const lines = await readChat(paths.chat);
     expect(openQuestions(lines)).toHaveLength(1);
     expect(await chatSystemPrompt(paths, Date.now())).toContain("테스트를 추가할까요?");
+    // Mate가 직접 읽을 기록 위치를 알린다 (확인하려고 임무를 만들지 않게)
+    expect(await chatSystemPrompt(paths, Date.now())).toContain(`Mate 홈 ${paths.home}`);
     await appendChat(paths.chat, { role: "user", text: "예", answerTo: lines[0]!.id });
     expect(openQuestions(await readChat(paths.chat))).toHaveLength(0);
   });

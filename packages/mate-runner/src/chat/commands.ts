@@ -158,7 +158,8 @@ export async function recentRunsText(paths: MatePaths, limit = 5): Promise<strin
   const runs = (await listRuns(paths, limit)).filter((r) => r.status !== "running");
   return runs
     .map((r) => {
-      const head = `• ${r.dutyName}: ${r.status}${r.summary ? ` — ${r.summary.slice(0, 160)}` : r.error ? ` — ${r.error.slice(0, 120)}` : ""}`;
+      const when = new Date(r.startedAt).toLocaleString("ko-KR");
+      const head = `• ${r.id} · ${when} · ${r.dutyName}: ${r.status}${r.summary ? ` — ${r.summary.slice(0, 160)}` : r.error ? ` — ${r.error.slice(0, 120)}` : ""}`;
       // 어떤 도구를 썼는지 (예: pi-web-access를 썼는지 물으면 이것으로 답한다). 세션 파일을 뒤질 필요가 없다
       const tools = r.tools ? Object.entries(r.tools).map(([name, u]) => `${name} ${u.calls}${u.errors ? `(오류 ${u.errors})` : ""}`).join(", ") : "";
       const missing = r.missingPackages?.length ? ` / 설치 폴더가 없어 빠진 패키지: ${r.missingPackages.join(", ")}` : "";

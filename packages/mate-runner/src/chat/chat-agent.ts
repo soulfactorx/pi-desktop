@@ -290,7 +290,7 @@ export class ChatAgent {
       return true;
     }
     const grants = [...new Set([...(duty.grants ?? []), ...permission.commands])];
-    await saveDuty(paths, { ...duty, grants, updatedAt: this.now() });
+    await saveDuty(paths, { ...duty, grants, updatedAt: this.now() }, "permission");
     await addRequest(paths, duty.id, this.now());
     await this.track(duty.id, request.source);
     this.options.log(`chat permission granted duty=${duty.id} commands=${permission.commands.join(",")}`);
@@ -495,7 +495,7 @@ export class ChatAgent {
           ...(setup?.mcpServers.length ? { mcpServers: setup.mcpServers } : {}),
           ...(webGrants.length ? { grants: webGrants } : {}),
           createdAt: this.now(),
-        });
+        }, source === "telegram" ? "phone" : "chat");
         const where = str("folder") ? ` (${folderAlias(duty.cwd)})` : "";
         const webNote = web && webGrants.length === 0 ? " 처음 실행할 때 웹 검색을 허용할지 물어요." : "";
         return `🗓 임무를 만들었어요: ${duty.name}${where}.${webNote} 임무 탭에서 고칠 수 있어요.`;
@@ -545,7 +545,7 @@ export class ChatAgent {
           if (mcpServers.length !== (duty.mcpServers?.length ?? 0) || grants.length !== (duty.grants?.length ?? 0)) changed.push("인터넷");
         }
         if (changed.length === 0) return `"${duty.name}"은(는) 바뀐 것이 없어요.`;
-        await saveDuty(paths, { ...next, updatedAt: this.now() });
+        await saveDuty(paths, { ...next, updatedAt: this.now() }, source === "telegram" ? "phone" : "chat");
         return `✏️ 임무를 고쳤어요: ${next.name} (${changed.join("·")}). 허용한 명령은 그대로예요.`;
       }
       case "pause":
