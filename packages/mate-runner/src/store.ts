@@ -427,6 +427,24 @@ export async function listRuns(paths: MatePaths, limit = 100): Promise<RunRecord
   return runs.filter((r): r is RunRecord => !!r);
 }
 
+/** 실행기가 멈춰 끝나지 못한 실행에 남기는 오류 */
+export const INTERRUPTED_ERROR = "중단됨: 실행 도중 실행기가 멈췄습니다 (앱 업데이트·종료, PC 재시작 등). 임무 탭이나 이 기록의 \"다시 실행\"으로 다시 돌릴 수 있습니다.";
+
+/**
+ * "실행 중"으로 남은 기록을 중단으로 바꾼다. 실행기는 하나만 돌므로(pid 잠금) 실행기가 시작할 때 "실행 중"인 기록은
+ * 앞 실행기가 끝내지 못한 것이다 (업데이트로 앱을 닫으면 실행기도 멈춘다). 바꾼 기록을 돌려준다
+ */
+export async function markInterruptedRuns(paths: MatePaths, now = Date.now()): Promise<RunRecord[]> {
+  const stale = (await listRuns(paths, 1000)).filter((r) => r.status === "running");
+  const marked: RunRecord[] = [];
+  for (const run of stale) {
+    const next: RunRecord = { ...run, status: "failed", error: INTERRUPTED_ERROR, interrupted: true, endedAt: now };
+    await writeRun(paths, next);
+    marked.push(next);
+  }
+  return marked;
+}
+
 /** 스킬 폴더를 휴지통으로 옮긴다 (Mate의 스킬 탭) */
 export async function deleteSkill(paths: MatePaths, name: string): Promise<void> {
   if (!isSkillName(name)) throw new Error(`스킬 이름이 올바르지 않습니다: ${name}`);

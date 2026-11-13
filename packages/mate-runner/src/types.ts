@@ -170,6 +170,8 @@ export interface RunRecord {
   tools?: Record<string, { calls: number; errors: number }>;
   /** 설치 폴더가 없어 이 실행에 올라가지 않은 Pi 패키지 (그 패키지의 도구를 쓸 수 없었다) */
   missingPackages?: string[];
+  /** 실행 도중 실행기가 멈춰 끝나지 못했다 (다음에 실행기가 시작할 때 표시한다) */
+  interrupted?: boolean;
 }
 
 /** 변화 계기가 본 것과, 실행을 기다리는 변화 */

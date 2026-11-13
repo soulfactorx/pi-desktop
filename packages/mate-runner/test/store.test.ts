@@ -11,6 +11,7 @@ import {
   listRuns,
   loadConfig,
   loadInboxState,
+  markInterruptedRuns,
   newRunId,
   normalizeDuty,
   pruneRuns,
@@ -173,6 +174,22 @@ describe("임무 변경 기록", () => {
 
   it("기록이 없으면 빈 목록", async () => {
     expect(await readDutyLog(paths)).toEqual([]);
+  });
+});
+
+describe("끝나지 못한 실행", () => {
+  it("실행기가 시작할 때 '실행 중'으로 남은 기록을 중단으로 바꾼다 (업데이트로 실행기가 멈춘 경우)", async () => {
+    const base = { dutyId: "hn", dutyName: "HN 요약", reason: "manual", model: "m", profile: "observe" } as const;
+    await writeRun(paths, { ...base, id: "20261113-010000-aaa", status: "done", startedAt: 1, endedAt: 2 });
+    await writeRun(paths, { ...base, id: "20261113-020000-bbb", status: "running", startedAt: 3 });
+    const marked = await markInterruptedRuns(paths, 10);
+    expect(marked.map((r) => r.id)).toEqual(["20261113-020000-bbb"]);
+    const runs = await listRuns(paths);
+    expect(runs.find((r) => r.id === "20261113-020000-bbb")).toMatchObject({ status: "failed", interrupted: true, endedAt: 10 });
+    expect(runs.find((r) => r.id === "20261113-020000-bbb")!.error).toContain("중단됨");
+    expect(runs.find((r) => r.id === "20261113-010000-aaa")).toMatchObject({ status: "done" });
+    // 다시 해도 바뀌는 것이 없다
+    expect(await markInterruptedRuns(paths, 20)).toEqual([]);
   });
 });
 
