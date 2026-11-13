@@ -73,9 +73,14 @@ export function PackagesPage({ onError }: { onError: (message: string) => void }
                     <strong>{p.name}</strong>
                     <div className="muted small-text mcp-target" title={p.path ?? ""}>
                       {p.source}
-                      {!p.path && " · 설치 폴더를 찾지 못함 (다시 설치해 보세요)"}
+                      {!p.path && " · 설치 폴더를 찾지 못함 (이 패키지의 도구가 대화에 올라가지 않습니다)"}
                     </div>
                   </div>
+                  {!p.path && (
+                    <button className="small primary" disabled={Boolean(pkgs.busy)} onClick={() => pkgs.install(p.source)}>
+                      다시 설치
+                    </button>
+                  )}
                   <button className="small" disabled={Boolean(pkgs.busy)} onClick={() => pkgs.remove(p.source, `${p.name} 패키지를 지울까요?`)}>
                     지우기
                   </button>
