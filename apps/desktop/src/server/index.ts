@@ -144,6 +144,8 @@ router.handle(IpcChannels.setWorkspaceEnabled, () => {
 router.handle(IpcChannels.workspaceShown, () => undefined);
 router.handle(IpcChannels.workspaceReady, () => undefined);
 router.handle(IpcChannels.revealWorkspace, () => undefined);
+// 웹은 브라우저 알림(화면)과 웹 푸시(서버)를 쓴다
+router.handle(IpcChannels.showNotification, () => false);
 
 // 파일 관리자 (설계 §5.10): 서버(Termux)의 홈 폴더 아래를 화면에서 다룬다
 const files = new FileManager();

@@ -169,6 +169,11 @@ export class Workspaces {
 
   /** 알림 센터에서 누른 알림이 가리키는 곳으로 간다 (app-notification.ts) */
   openRoute(route: NotificationRoute): void {
+    // Pi 작업 공간의 탭: 창을 앞으로 가져와 Pi를 보이고 화면이 그 탭을 연다
+    if (route.workspace === "pi") {
+      this.reveal("pi", () => this.host.sendToShell(IpcChannels.notificationClicked, route.tab));
+      return;
+    }
     if (!this.enabled(route.workspace)) return;
     if (route.workspace === "mate") this.reveal("mate", () => this.sendTo("mate", MateChannels.openTab, route.tab));
     else this.reveal("agent", () => this.sendTo("agent", AgentChannels.menuCommand, route.command));

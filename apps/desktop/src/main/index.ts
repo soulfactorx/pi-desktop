@@ -19,7 +19,7 @@ import { hostEventHandlers, registerHandlers, type Router } from "./ipc-handlers
 import { revealWindow, usesSingleInstanceLock } from "./single-instance";
 import { Workspaces } from "./workspaces";
 import { frameNavigation } from "./navigation";
-import { APP_PROTOCOL, routeFromArgv } from "./app-notification";
+import { APP_PROTOCOL, routeFromArgv, showAppNotification } from "./app-notification";
 import { migrateFromOldApps, oldApps } from "./migrate";
 import { isRunnerOnlyLaunch } from "../../../mate/src/main/autostart";
 import { appMenuTemplate as agentMenuTemplate } from "../../../agent/src/main/app-menu";
@@ -360,6 +360,19 @@ app.whenReady().then(() => {
   ipcMain.handle(IpcChannels.workspaceShown, (_event, id: WorkspaceId) => workspaces.shown(id));
   ipcMain.handle(IpcChannels.workspaceReady, (_event, id: PluginWorkspaceId) => workspaces.ready(id));
   ipcMain.handle(IpcChannels.revealWorkspace, (_event, id: WorkspaceId) => workspaces.reveal(id));
+  // Pi 탭 소식 알림: main이 띄워야 Windows 알림 센터에서 눌러도 앱 주소로 그 탭에 온다 (app-notification.ts)
+  ipcMain.handle(IpcChannels.showNotification, (_event, input: { title: string; body: string; silent?: boolean; tabId: string }) => {
+    const tabId = String(input?.tabId ?? "");
+    if (!/^[\w-]{1,40}$/.test(tabId)) return false;
+    showAppNotification({
+      title: String(input.title ?? "").slice(0, 200),
+      body: String(input.body ?? "").slice(0, 400),
+      silent: input.silent === true,
+      route: { workspace: "pi", tab: tabId },
+      onClick: () => workspaces.openRoute({ workspace: "pi", tab: tabId }),
+    });
+    return true;
+  });
   workspaces.start();
   createWindow();
   // 알림 센터의 알림을 누르면 Windows가 앱 주소로 이 앱을 연다 (Agent·Mate 알림, app-notification.ts). 설치본만 등록한다

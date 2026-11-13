@@ -14,6 +14,8 @@ export function matePaths(home: string) {
     home,
     config: join(home, "config.json"),
     duties: join(home, "duties"),
+    /** 임무를 누가(앱·대화·휴대폰) 언제 무엇을 바꿨는지 (추가만, Mate 대화가 읽는다) */
+    dutyLog: join(home, "duty-log.jsonl"),
     requests: join(home, "requests"),
     state: join(home, "state.json"),
     runs: join(home, "runs"),

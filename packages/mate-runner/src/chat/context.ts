@@ -4,7 +4,7 @@ import { folderAlias } from "../remote/messages";
 import { schedulePhrase } from "./schedule-phrase";
 import { packageWebTools, webSearchOn } from "./web-search";
 import { freshItems, isOneOff, knownFolders, recentRunsText } from "./commands";
-import { listDuties, loadConfig, loadState } from "../store";
+import { listDuties, loadConfig, loadState, readDutyLog, type DutyLogEntry } from "../store";
 import { mateTunables } from "../tunables";
 
 /**
@@ -13,15 +13,16 @@ import { mateTunables } from "../tunables";
  * 데이터는 짧게 자른다. 데이터 속 지시는 따르지 않게 한다.
  */
 export async function chatSystemPrompt(paths: MatePaths, now: number): Promise<string> {
-  const [config, state, duties, folders, fresh, chat, runs, webOn] = await Promise.all([
+  const [config, state, duties, folders, fresh, chat, runs, webOn, dutyLog] = await Promise.all([
     loadConfig(paths),
     loadState(paths),
     listDuties(paths),
     knownFolders(paths),
     freshItems(paths),
     readChat(paths.chat),
-    recentRunsText(paths),
+    recentRunsText(paths, 8),
     webSearchOn(paths),
+    readDutyLog(paths, 10),
   ]);
   const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s).replace(/\s+/g, " ");
   const open = openQuestions(chat).slice(-8);
@@ -45,7 +46,7 @@ export async function chatSystemPrompt(paths: MatePaths, now: number): Promise<s
       .filter((d) => !isOneOff(d))
       .map(
         (d) =>
-          `- ${d.id} "${clip(d.name, 60)}" (${schedulePhrase(d.trigger)}, ${d.profile}, 폴더 ${folderAlias(d.cwd)}${d.enabled ? "" : ", 꺼짐"}${d.grants?.length ? `, 허용 ${d.grants.join(" ")}` : ""}${d.mcpServers?.length ? `, MCP ${d.mcpServers.join(" ")}` : ""}) 지시: ${clip(d.prompt, 160)}`,
+          `- ${d.id} "${clip(d.name, 60)}" (${schedulePhrase(d.trigger)}, ${d.profile}, 폴더 ${folderAlias(d.cwd)}${d.enabled ? "" : ", 꺼짐"}${d.grants?.length ? `, 허용 ${d.grants.join(" ")}` : ""}${d.mcpServers?.length ? `, MCP ${d.mcpServers.join(" ")}` : ""}${d.updatedAt ? `, 마지막으로 고침 ${new Date(d.updatedAt).toLocaleString("ko-KR")}` : ""}) 지시: ${clip(d.prompt, 600)}`,
       ) || []),
     "",
     "아는 폴더 (이름 — 경로):",
@@ -64,7 +65,18 @@ export async function chatSystemPrompt(paths: MatePaths, now: number): Promise<s
     lines.push("", "실행기 알림 (네가 맡긴 일과 허용 답을 실제로 처리한 결과. 오래된 것이 위):");
     for (const n of notices) lines.push(`- ${clip(n.text, 300)}`);
   }
-  if (runs) lines.push("", "최근 실행:", runs);
+  if (dutyLog.length) {
+    lines.push("", "최근 임무 변경 (오래된 것이 위. '앱'은 사용자가 임무 탭에서 직접 고친 것이다. 위 임무 목록이 지금 설정이다):");
+    for (const e of dutyLog) lines.push(`- ${dutyLogLine(e, clip)}`);
+  }
+  if (runs) lines.push("", "최근 실행 (실행 id · 시각 · 결과 · 쓴 도구):", runs);
+  lines.push(
+    "",
+    `Mate의 기록 (read·grep으로 직접 읽을 수 있다. 위 요약보다 자세한 것이 필요할 때): Mate 홈 ${paths.home}`,
+    "- runs/<실행 id>.json: 실행 결과 전체(summary)·쓴 도구 수(tools)·빠진 패키지(missingPackages)·세션 파일(sessionFile)",
+    "- sessions/*.jsonl: 실행 세션 (도구 호출과 결과까지. 크니 grep으로 찾는다)",
+    "- duties/<임무 id>.json: 임무 설정 · duty-log.jsonl: 임무 변경 기록 · inbox.jsonl: 제안",
+  );
   if (state.observer?.recent.length) {
     lines.push("", "최근 관찰한 Pi 작업:");
     for (const s of state.observer.recent.slice(0, 5)) lines.push(`- ${folderAlias(s.cwd)}: ${clip(s.firstPrompt ?? "", 120)}`);
@@ -85,4 +97,14 @@ export function recentNotices(chat: ChatLine[]): ChatLine[] {
 export function openQuestions(chat: ChatLine[]): ChatLine[] {
   const answered = new Set(chat.filter((l) => l.answerTo).map((l) => l.answerTo));
   return chat.filter((l) => l.kind === "question" && !answered.has(l.id));
+}
+
+const BY_LABEL: Record<DutyLogEntry["by"], string> = { app: "앱", chat: "Mate 대화", phone: "휴대폰 대화", permission: "허용 질문" };
+
+/** "11. 13. 오후 1:10 앱: HN커뮤니티 기사 요약 고침 — 지시: … → …" */
+export function dutyLogLine(e: DutyLogEntry, clip: (s: string, n: number) => string): string {
+  const head = `${new Date(e.at).toLocaleString("ko-KR")} ${BY_LABEL[e.by] ?? e.by}: "${clip(e.name, 60)}" (${e.dutyId}) ${e.action === "create" ? "만듦" : e.action === "delete" ? "지움" : "고침"}`;
+  if (e.changes.length === 0) return head;
+  const parts = e.changes.map((c) => (c.field === "지시" ? `지시: "${clip(c.before ?? "", 200)}" → "${clip(c.after ?? "", 300)}"` : `${c.field}: ${clip(c.before ?? "없음", 80)} → ${clip(c.after ?? "없음", 80)}`));
+  return `${head} — ${parts.join(" / ")}`;
 }

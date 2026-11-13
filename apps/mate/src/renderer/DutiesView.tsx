@@ -17,6 +17,7 @@ import {
   TRIGGER_KINDS,
   triggerLabel,
   WEEKDAY_LABELS,
+  userDuties,
 } from "./mate-view";
 
 /** 임무 목록과 만들기·고치기 폼 */
@@ -39,7 +40,9 @@ export function DutiesView({ overview, now, act, setup }: { overview: Overview; 
     );
   }
 
-  const lastCwd = overview.duties.at(-1)?.cwd ?? "";
+  // 대화·휴대폰 지시로 한 번만 돈 일은 실행 기록에서 본다
+  const duties = userDuties(overview.duties);
+  const lastCwd = duties.at(-1)?.cwd ?? "";
   return (
     <section>
       <div className="section-head">
@@ -48,7 +51,7 @@ export function DutiesView({ overview, now, act, setup }: { overview: Overview; 
           새 임무
         </button>
       </div>
-      {overview.duties.length === 0 && (
+      {duties.length === 0 && (
         <div className="empty">
           <p>아직 임무가 없습니다. 템플릿으로 시작해 보세요.</p>
           <div className="row">
@@ -61,7 +64,7 @@ export function DutiesView({ overview, now, act, setup }: { overview: Overview; 
         </div>
       )}
       <ul className="cards">
-        {overview.duties.map((duty) => (
+        {duties.map((duty) => (
           <DutyCard key={duty.id} duty={duty} now={now} paused={overview.config.paused} act={act} onEdit={() => setEditing(duty)} />
         ))}
       </ul>

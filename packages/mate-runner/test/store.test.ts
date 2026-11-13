@@ -14,6 +14,7 @@ import {
   newRunId,
   normalizeDuty,
   pruneRuns,
+  readDutyLog,
   saveConfig,
   saveDuty,
   setInboxStatus,
@@ -147,3 +148,31 @@ describe("store", () => {
     expect(await loadInboxState(paths)).toEqual({ x: { status: "dismissed", at: 5 } });
   });
 });
+
+describe("임무 변경 기록", () => {
+  const base = { name: "HN 요약", enabled: true, cwd: "/w", prompt: "인기 10개", profile: "observe", trigger: { kind: "manual" }, createdAt: 1 };
+
+  it("누가 무엇을 바꿨는지 남기고, 바뀐 것이 없으면 남기지 않는다", async () => {
+    await saveDuty(paths, { ...base, id: "hn" }, "app");
+    await saveDuty(paths, { ...base, id: "hn", prompt: "인기 10개, 최신 20개", enabled: false }, "app");
+    await saveDuty(paths, { ...base, id: "hn", prompt: "인기 10개, 최신 20개", enabled: false }, "chat");
+    // by가 없으면(실행기 안의 저장) 기록하지 않는다
+    await saveDuty(paths, { ...base, id: "hn", prompt: "다른 지시" });
+    await deleteDuty(paths, "hn", "phone");
+    const log = await readDutyLog(paths);
+    expect(log.map((e) => [e.by, e.action])).toEqual([
+      ["app", "create"],
+      ["app", "update"],
+      ["phone", "delete"],
+    ]);
+    expect(log[1]!.changes).toEqual([
+      { field: "지시", before: "인기 10개", after: "인기 10개, 최신 20개" },
+      { field: "켜기", before: "true", after: "false" },
+    ]);
+  });
+
+  it("기록이 없으면 빈 목록", async () => {
+    expect(await readDutyLog(paths)).toEqual([]);
+  });
+});
+

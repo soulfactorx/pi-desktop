@@ -265,3 +265,11 @@ export function formatTokens(value: number | undefined): string {
   if (value < 1_000_000) return `${trim(value / 1000)}k`;
   return `${trim(value / 1_000_000)}M`;
 }
+
+/**
+ * 사용자가 만든 임무만 (임무 탭). 대화·휴대폰 지시(ask·fix)와 "Mate에게 맡기기"는 한 번만 도는 실행이라
+ * 임무 탭에 두지 않고 실행 기록에서만 본다 (mate-runner chat/commands.ts의 isOneOff와 같은 규칙)
+ */
+export function userDuties<T extends { id: string }>(duties: T[]): T[] {
+  return duties.filter((d) => !/^(phone|chat|delegated)-/.test(d.id));
+}

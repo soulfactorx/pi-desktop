@@ -14,6 +14,12 @@ describe("알림 주소", () => {
     expect(parseRoute("pi-desktop://open/agent/page%3Atasks/")).toEqual({ workspace: "agent", command: "page:tasks" });
   });
 
+  it("Pi 작업 공간의 탭도 주소로 바꾼다", () => {
+    expect(routeUrl({ workspace: "pi", tab: "tmhw1k2" })).toBe("pi-desktop://open/pi/tmhw1k2");
+    expect(parseRoute("pi-desktop://open/pi/tmhw1k2")).toEqual({ workspace: "pi", tab: "tmhw1k2" });
+    expect(parseRoute("pi-desktop://open/pi/a%2Fb")).toBeUndefined();
+  });
+
   it("모르는 주소·탭·이상한 명령은 받지 않는다", () => {
     expect(parseRoute("pi-desktop://open/mate/settings")).toBeUndefined();
     expect(parseRoute("pi-desktop://open/other/x")).toBeUndefined();
@@ -32,5 +38,7 @@ describe("알림 주소", () => {
     expect(xml).toContain('activationType="protocol" launch="pi-desktop://open/mate/inbox"');
     expect(xml).toContain("임무 완료: &quot;A&quot; &amp; &lt;B&gt;");
     expect(xml).not.toContain("<text></text>");
+    expect(xml).not.toContain("audio");
+    expect(toastXml("끝", "", "pi-desktop://open/pi/t1", true)).toContain('<audio silent="true"/>');
   });
 });

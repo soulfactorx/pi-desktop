@@ -551,6 +551,13 @@ export interface PiDesktopApi {
   revealWorkspace(id: WorkspaceId): Promise<void>;
   /** 작업 공간 상태가 바뀌었다 (읽지 않은 알림 수 등). workspacesState를 다시 읽는다 */
   onWorkspacesChanged(listener: () => void): () => void;
+  /**
+   * 탭 소식을 OS 알림으로 띄운다 (main이 띄워 Windows 알림 센터에서 눌러도 그 탭으로 온다).
+   * 띄웠으면 true. 웹 서버는 false라 화면이 브라우저 알림을 쓴다
+   */
+  showNotification(input: { title: string; body: string; silent?: boolean; tabId: string }): Promise<boolean>;
+  /** 알림을 눌렀다: 그 탭을 연다 */
+  onNotificationClicked(listener: (tabId: string) => void): () => void;
   /** 작업 기록 (최근 것부터) */
   listActionLog(limit?: number): Promise<ActionLogEntry[]>;
   /** 화면에서 시작한 작업을 기록에 남긴다 (터미널에서 실행한 설치·제거 명령 등) */
@@ -676,6 +683,8 @@ export const IpcChannels = {
   showWorkspace: "pi:show-workspace",
   workspacesChanged: "pi:workspaces-changed",
   revealWorkspace: "pi:reveal-workspace",
+  showNotification: "pi:show-notification",
+  notificationClicked: "pi:notification-clicked",
   logAction: "pi:log-action",
   importUpdate: "pi:import-update",
   importRemove: "pi:import-remove",
