@@ -194,7 +194,13 @@ export async function runDuty(
   await askPermission(paths, duty, runId, blockedPath, now()).catch((error: Error) => log(paths, `permission ask error ${error.message}`));
 
   const sessionFile = outcome.sessionId ? await findSessionFile(paths, outcome.sessionId) : undefined;
-  const finished: RunRecord = { ...record, ...outcome, ...(sessionFile ? { sessionFile } : {}), endedAt: now() };
+  const finished: RunRecord = {
+    ...record,
+    ...outcome,
+    ...(sessionFile ? { sessionFile } : {}),
+    ...(missing.length > 0 ? { missingPackages: missing } : {}),
+    endedAt: now(),
+  };
   await writeRun(paths, finished);
   await pruneRuns(paths);
   await log(paths, `run end ${runId} status=${finished.status}${finished.error ? ` error=${finished.error.split("\n")[0]}` : ""}`);

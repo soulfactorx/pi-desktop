@@ -130,6 +130,16 @@ describe("EventSummary", () => {
     s.push("not json");
     expect(s).toMatchObject({ sessionId: "sess-1", lastText: "요약입니다", tokens: 15, proposals: 1, settled: true, errorMessage: undefined });
     expect(s.costUsd).toBeCloseTo(0.003);
+    // 도구별 호출 수 (실행 기록에서 pi-web-access 같은 도구를 썼는지 보인다)
+    expect(s.tools).toEqual({ mate_propose: { calls: 2, errors: 0 } });
+  });
+
+  it("도구별 호출 수와 오류 수를 센다", () => {
+    const s = new EventSummary();
+    for (const [toolName, isError] of [["fetch_content", false], ["fetch_content", true], ["bash", false]] as const) {
+      s.push(JSON.stringify({ type: "tool_execution_end", toolName, isError }));
+    }
+    expect(s.tools).toEqual({ fetch_content: { calls: 2, errors: 1 }, bash: { calls: 1, errors: 0 } });
   });
 
   it("모델 오류로 끝나면 오류를 남긴다", () => {
