@@ -22,6 +22,7 @@ import {
   listDuties,
   loadConfig,
   loadState,
+  markInterruptedRuns,
   newRunId,
   pruneRuns,
   saveState,
@@ -239,7 +240,10 @@ export class Runner {
     const { paths } = this.options;
     await mkdir(paths.requests, { recursive: true });
     this.state = await loadState(paths);
-    // 지난번 실행기가 실행 도중 끝났다면 그 실행은 실패로 남긴다
+    // 지난번 실행기가 실행 도중 끝났다면(업데이트·종료) 그 실행 기록을 "중단됨"으로 바꾼다.
+    // 그대로 두면 실행 기록에 "실행 중"으로 영영 남는다
+    const interrupted = await markInterruptedRuns(paths, this.now()).catch(() => []);
+    for (const run of interrupted) await log(paths, `run interrupted ${run.id} duty=${run.dutyId}`);
     delete this.state.current;
     this.state = { ...this.state, pid: process.pid, build: this.options.build, startedAt: this.now(), heartbeatAt: this.now() };
     await saveState(paths, this.state);

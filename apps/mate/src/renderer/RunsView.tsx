@@ -2,13 +2,15 @@ import { useEffect, useState } from "react";
 import { MarkdownText } from "./MarkdownText";
 import type { Overview, RunRecord, TranscriptItem } from "../shared/api";
 import type { Act } from "./App";
-import { costLabel, durationLabel, formatTokens, PROFILE_LABELS, REASON_LABELS, relativeTime, STATUS_LABELS } from "./mate-view";
+import { costLabel, durationLabel, formatTokens, PROFILE_LABELS, REASON_LABELS, relativeTime, STATUS_LABELS, userDuties } from "./mate-view";
 
 /** 최근 실행 기록 (새것부터) */
 export function RunsView({ overview, now, act }: { overview: Overview; now: number; act: Act }) {
   const { runs, runner } = overview;
   const [viewing, setViewing] = useState<RunRecord>();
   const todayCost = costLabel(runner.today.costUsd);
+  // 다시 실행할 수 있는 임무 (지운 임무·한 번만 돈 지시는 빼고)
+  const dutyIds = new Set(userDuties(overview.duties).map((d) => d.id));
   return (
     <section>
       <div className="section-head">
@@ -24,8 +26,10 @@ export function RunsView({ overview, now, act }: { overview: Overview; now: numb
             key={run.id}
             run={run}
             now={now}
+            canRerun={run.status !== "running" && run.status !== "done" && dutyIds.has(run.dutyId)}
             onView={() => setViewing(run)}
             onDelete={() => void act(() => window.mate.deleteRun(run.id))}
+            onRerun={() => void act(() => window.mate.runNow(run.dutyId))}
           />
         ))}
       </ul>
@@ -34,13 +38,28 @@ export function RunsView({ overview, now, act }: { overview: Overview; now: numb
   );
 }
 
-function RunRow({ run, now, onView, onDelete }: { run: RunRecord; now: number; onView: () => void; onDelete: () => void }) {
+function RunRow({
+  run,
+  now,
+  canRerun,
+  onView,
+  onDelete,
+  onRerun,
+}: {
+  run: RunRecord;
+  now: number;
+  /** 끝나지 못했거나 실패한 실행이고, 그 임무가 아직 있다 */
+  canRerun: boolean;
+  onView: () => void;
+  onDelete: () => void;
+  onRerun: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const text = run.error ?? run.summary;
   return (
     <li className={`card run-row status-${run.status}`}>
       <div className="card-head">
-        <span className={`chip status-${run.status}`}>{STATUS_LABELS[run.status]}</span>
+        <span className={`chip status-${run.status}`}>{run.interrupted ? "중단됨" : STATUS_LABELS[run.status]}</span>
         <strong className="title">{run.dutyName}</strong>
         <span className="muted">
           {relativeTime(run.startedAt, now)} · {REASON_LABELS[run.reason]} · {PROFILE_LABELS[run.profile].name}
@@ -51,6 +70,11 @@ function RunRow({ run, now, onView, onDelete }: { run: RunRecord; now: number; o
         {run.sessionId && run.status !== "running" && (
           <button className="small" onClick={onView}>
             세션 보기
+          </button>
+        )}
+        {canRerun && (
+          <button className="small" title="이 임무를 지금 다시 실행합니다" onClick={onRerun}>
+            다시 실행
           </button>
         )}
         {run.status !== "running" && (
