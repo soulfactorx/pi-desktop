@@ -20,6 +20,7 @@ import {
 } from "@pi-desktop/host-protocol";
 import type { TaskRecord } from "@pi-desktop/agent-kit/task-types";
 import { agentBuildId } from "../../../desktop/src/main/agent-build";
+import { showAppNotification } from "../../../desktop/src/main/app-notification";
 import { devSessionOverrides } from "../../../desktop/src/main/dev-overrides";
 import type { CardDraft } from "@pi-desktop/agent-kit/peers";
 import type { McpCheckResult } from "@pi-desktop/pi-isolation/mcp-presets";
@@ -125,12 +126,12 @@ export function createAgentMain(ctx: AgentMainContext): AgentMain {
     if (task.status === "waiting") {
       if (task.origin !== "peer-in" || task.approval !== "pending") return;
       ctx.onNotify?.();
-      const ask = new Notification({
+      showAppNotification({
         title: `작업 요청: ${task.peer?.name ?? "피어"}`,
         body: `"${task.title}" — 네트워크 화면에서 폴더를 골라 승인하거나 거절하세요`,
+        route: { workspace: "agent", command: "page:network" },
+        onClick: () => ctx.reveal(() => sendToRenderer(IpcChannels.menuCommand, "page:network")),
       });
-      ask.on("click", () => ctx.reveal(() => sendToRenderer(IpcChannels.menuCommand, "page:network")));
-      ask.show();
       return;
     }
     if (ctx.isViewing()) return;
@@ -145,10 +146,13 @@ export function createAgentMain(ctx: AgentMainContext): AgentMain {
             : "작업";
     const body = (task.status === "failed" ? task.error : task.result)?.slice(0, 200) ?? "";
     ctx.onNotify?.();
-    const done = new Notification({ title: `${origin} ${status}: ${task.title}`, body });
     // 누르면 창(합친 앱이면 Agent 작업 공간)을 앞으로 가져와 작업·예약 화면을 연다
-    done.on("click", () => ctx.reveal(() => sendToRenderer(IpcChannels.menuCommand, "page:tasks")));
-    done.show();
+    showAppNotification({
+      title: `${origin} ${status}: ${task.title}`,
+      body,
+      route: { workspace: "agent", command: "page:tasks" },
+      onClick: () => ctx.reveal(() => sendToRenderer(IpcChannels.menuCommand, "page:tasks")),
+    });
   }
 
   /** 알림에 쓸 대화의 폴더 (세션 id → cwd). 모르는 세션이 오면 목록을 다시 읽는다 */
@@ -222,12 +226,14 @@ export function createAgentMain(ctx: AgentMainContext): AgentMain {
       const note = sessionNote(n.event, basename(cwd) || cwd);
       if (!note) return;
       ctx.onNotify?.();
-      const shown = new Notification({ title: note.title, body: note.body });
-      shown.on("click", () => {
-        // 창(합친 앱이면 Agent 작업 공간)을 앞으로 가져온 뒤, 화면이 준비되면 그 대화로 간다
-        ctx.reveal(() => sendToRenderer(IpcChannels.menuCommand, `${OPEN_CHAT_COMMAND}${n.sessionId}`));
+      // 창(합친 앱이면 Agent 작업 공간)을 앞으로 가져온 뒤, 화면이 준비되면 그 대화로 간다
+      const command = `${OPEN_CHAT_COMMAND}${n.sessionId}`;
+      showAppNotification({
+        title: note.title,
+        body: note.body,
+        route: { workspace: "agent", command },
+        onClick: () => ctx.reveal(() => sendToRenderer(IpcChannels.menuCommand, command)),
       });
-      shown.show();
     })().catch(() => undefined);
   }
 

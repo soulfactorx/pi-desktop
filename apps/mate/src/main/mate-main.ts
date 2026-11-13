@@ -1,4 +1,5 @@
 import { app, dialog, ipcMain, Notification, shell, type BrowserWindow } from "electron";
+import { showAppNotification } from "../../../desktop/src/main/app-notification";
 import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
@@ -262,10 +263,15 @@ export function createMateMain(ctx: MateMainContext): MateMain {
     if (fresh.length > 0 && !ctx.isViewing()) ctx.onNotify?.();
     if (!current.config.desktopNotify || !Notification.isSupported() || ctx.isViewing()) return;
     for (const note of fresh) {
-      const shown = new Notification({ title: note.title, body: note.body });
-      // 창(합친 앱이면 Mate 작업 공간)을 앞으로 가져온 뒤, 화면이 준비되면 그 알림의 탭을 연다
-      shown.on("click", () => ctx.reveal(() => ctx.send(IpcChannels.openTab, note.target ?? "inbox")));
-      shown.show();
+      const tab = note.target ?? "inbox";
+      // 창(합친 앱이면 Mate 작업 공간)을 앞으로 가져온 뒤, 화면이 준비되면 그 알림의 탭을 연다.
+      // Windows 알림 센터에서 누르면 route로 앱이 열려 같은 곳으로 간다 (app-notification.ts)
+      showAppNotification({
+        title: note.title,
+        body: note.body,
+        route: { workspace: "mate", tab },
+        onClick: () => ctx.reveal(() => ctx.send(IpcChannels.openTab, tab)),
+      });
     }
   }
 

@@ -19,6 +19,7 @@ import { hostEventHandlers, registerHandlers, type Router } from "./ipc-handlers
 import { revealWindow, usesSingleInstanceLock } from "./single-instance";
 import { Workspaces } from "./workspaces";
 import { frameNavigation } from "./navigation";
+import { APP_PROTOCOL, routeFromArgv } from "./app-notification";
 import { migrateFromOldApps, oldApps } from "./migrate";
 import { isRunnerOnlyLaunch } from "../../../mate/src/main/autostart";
 import { appMenuTemplate as agentMenuTemplate } from "../../../agent/src/main/app-menu";
@@ -96,7 +97,10 @@ function createWindow(): void {
   if (windowState.maximized) mainWindow.maximize();
   trackWindowState(mainWindow, windowStateFile);
   // 새 창으로 연 작업 공간에서 돌아오면 메뉴바를 이 창의 작업 공간에 맞춘다
-  mainWindow.on("focus", () => setAppMenu());
+  mainWindow.on("focus", () => {
+    setAppMenu();
+    workspaces.focused();
+  });
 
   // 응답 속 링크가 앱 창을 다른 페이지로 바꾸지 않게 한다. http(s) 링크만 외부 브라우저로 연다.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -183,7 +187,10 @@ function openWorkspaceWindow(id: PluginWorkspaceId): void {
   });
   guardFrameNavigation(win);
   // 이 창을 보는 동안 메뉴바는 이 작업 공간의 것 (Agent 메뉴 명령은 이 창으로만 간다)
-  win.on("focus", () => setAppMenu({ id, win }));
+  win.on("focus", () => {
+    setAppMenu({ id, win });
+    workspaces.focused(id);
+  });
   workspaces.attachWindow(id, win);
   void win.loadFile(join(here, "../renderer", id, "index.html"));
 }
@@ -296,9 +303,12 @@ async function pickDirectory(): Promise<string | undefined> {
   return result.canceled ? undefined : result.filePaths[0];
 }
 
-app.on("second-instance", () => {
+app.on("second-instance", (_event, argv) => {
   // macOS는 창을 다 닫아도 앱이 남으므로 창이 없으면 새로 연다 (activate와 같다)
   if (!revealWindow(mainWindow) && app.isReady()) createWindow();
+  // Windows 알림 센터에서 Agent·Mate 알림을 누르면 앱 주소(pi-desktop://)로 열린다 → 그 화면으로 간다
+  const route = routeFromArgv(argv);
+  if (route) workspaces.openRoute(route);
 });
 
 if (runnerOnlyLaunch) {
@@ -352,6 +362,11 @@ app.whenReady().then(() => {
   ipcMain.handle(IpcChannels.revealWorkspace, (_event, id: WorkspaceId) => workspaces.reveal(id));
   workspaces.start();
   createWindow();
+  // 알림 센터의 알림을 누르면 Windows가 앱 주소로 이 앱을 연다 (Agent·Mate 알림, app-notification.ts). 설치본만 등록한다
+  if (process.platform === "win32" && app.isPackaged && !app.isDefaultProtocolClient(APP_PROTOCOL)) app.setAsDefaultProtocolClient(APP_PROTOCOL);
+  // 앱이 꺼져 있을 때 알림을 눌러 열렸으면 그 화면으로 간다 (작업 공간 화면이 뜬 뒤)
+  const launchRoute = routeFromArgv(process.argv);
+  if (launchRoute) mainWindow?.webContents.once("did-finish-load", () => workspaces.openRoute(launchRoute));
 
   // 자동 업데이트 (설치한 앱에서만 확인한다)
   // 설치 직전에 Mate 작업 공간의 실행기를 멈춘다 (실행기가 이 앱 실행 파일을 Node로 쓰면 설치 파일을 잡고 있지 않게)

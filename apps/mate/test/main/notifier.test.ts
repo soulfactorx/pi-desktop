@@ -54,7 +54,7 @@ describe("PC 알림 (notifier)", () => {
     );
     expect(notes).toEqual([
       { title: "Mate 실행 결과", body: "브리핑 끝", target: "chat" },
-      { title: "임무 완료: 아침 날씨 · 제안 1건", body: "s", target: "runs" },
+      { title: "임무 완료: 아침 날씨 · 제안 1건", body: "s", target: "inbox" },
       { title: "새 제안: 린트 경고", body: "경고 3개", target: "inbox" },
     ]);
   });
