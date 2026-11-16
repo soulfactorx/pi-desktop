@@ -49,7 +49,7 @@ export interface RunInput {
   /** 설치 제안 안내 (넣을 수 있는 MCP 서버, 다른 앱에만 있는 스킬). 제안할 수 있는 단계에서만 붙인다 */
   installHints?: string[];
   /** 대화(chat): 권한 단계·시스템 안내·이어 쓸 세션을 바꾼다 (임무 실행에는 쓰지 않음) */
-  chat?: { sessionId: string; systemPrompt: string; actionsPath: string };
+  chat?: { sessionId: string; systemPrompt: string; actionsPath: string; sectionsPath?: string };
   /** 지시와 함께 넘길 이미지 파일 (Pi의 `@파일`. 대화에서 붙인 이미지) */
   images?: string[];
 }
@@ -136,6 +136,10 @@ export function piEnv(input: RunInput, profile: MateProfile): Record<string, str
     [MATE_ENV.profile]: input.chat ? "chat" : profile,
     ...(input.chatPath ? { [MATE_ENV.chat]: input.chatPath } : {}),
     ...(input.chat ? { [MATE_ENV.actions]: input.chat.actionsPath } : {}),
+    ...(input.chat?.sectionsPath ? { [MATE_ENV.sections]: input.chat.sectionsPath } : {}),
+    // 대화는 띄엄띄엄 이어지므로 프롬프트 캐시를 1시간 둔다 (기본 5분이면 쉬었다 물을 때마다 대화 전체를 다시 저장한다).
+    // 임무 실행은 한 번에 끝나므로 기본(5분)을 쓴다
+    ...(input.chat ? { PI_CACHE_RETENTION: "long" } : {}),
     [MATE_ENV.inbox]: input.inboxPath,
     [MATE_ENV.dutyId]: input.duty.id,
     [MATE_ENV.runId]: input.runId,

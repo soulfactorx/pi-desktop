@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
@@ -22,6 +23,14 @@ import {
 } from "../src/remote/messages";
 import { loadRemoteState, TelegramRemote } from "../src/remote/telegram-remote";
 import { listDuties, loadInboxState, newRunId, saveConfig, saveDuty, writeRun } from "../src/store";
+
+/** 가짜 Pi가 받은 대화 안내: 규칙과 상태 섹션(파일)을 한 글로 합친다 (실행기는 섹션 파일을 실행 뒤에 지운다) */
+function withSections(input: RunInput): RunInput {
+  if (!input.chat?.sectionsPath) return input;
+  const sections = JSON.parse(readFileSync(input.chat.sectionsPath, "utf8")) as Record<string, string>;
+  return { ...input, chat: { ...input.chat, systemPrompt: [input.chat.systemPrompt, ...Object.values(sections)].join("\n\n") } };
+}
+
 
 const at = (h: number, m = 0) => new Date(2026, 9, 30, h, m).getTime();
 
@@ -116,7 +125,7 @@ describe("TelegramRemote", () => {
   let piCalls: RunInput[] = [];
   let piReply: { summary: string; actions?: Array<Record<string, unknown>> } = { summary: "네" };
   const fakePi = async (_launch: unknown, input: RunInput): Promise<RunOutcome> => {
-    piCalls.push(input);
+    piCalls.push(withSections(input));
     for (const a of piReply.actions ?? []) await appendChatAction(input.chat!.actionsPath, a);
     return { status: "done", summary: piReply.summary, costUsd: 0.001, tokens: 10, proposals: 0 };
   };

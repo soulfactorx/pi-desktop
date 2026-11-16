@@ -1,6 +1,6 @@
 import { packageDirs, packageToolNames } from "@pi-desktop/pi-resources";
 import { watch, type FSWatcher } from "node:fs";
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { appendChat, appendChatQuestion, extensionEntries, isToolGrant, PERMISSION_OPTIONS, readChat, readChatActions, readInbox, type ChatLine } from "@pi-desktop/mate-kit";
 import { delegateInboxItem } from "../delegate";
@@ -15,7 +15,7 @@ import { askPermission } from "../permission";
 import type { Exec } from "../watchers";
 import { COMMAND_HELP, findDuty, findFolder, instruct, runCommand, type ChatSource, type CommandContext } from "./commands";
 import { chatImagesOf, removeChatImages } from "./chat-images";
-import { chatSystemPrompt, openQuestions } from "./context";
+import { chatPromptParts, openQuestions } from "./context";
 import { parseSchedulePhrase } from "./schedule-phrase";
 import { mateDefault, mateTunables } from "../tunables";
 
@@ -347,11 +347,14 @@ export class ChatAgent {
       };
       const runId = `chat-${now.toString(36)}`;
       const blockedPath = join(paths.runDir, "blocked", `${runId}.jsonl`);
-      const [launch, extensions, systemPrompt] = await Promise.all([
+      const [launch, extensions, promptParts] = await Promise.all([
         this.options.locatePi(),
         extensionEntries(this.options.kitDir),
-        chatSystemPrompt(paths, now),
+        chatPromptParts(paths, now),
       ]);
+      // Mate 상태는 섹션으로 나눠 mate-chat 확장이 넣는다 (바뀐 섹션만 대화에 쌓여 프롬프트 캐시가 산다)
+      const sectionsPath = join(paths.chatActions, `${now}.sections.json`);
+      await writeFile(sectionsPath, JSON.stringify(promptParts.sections));
       const outcome = await (this.options.runPi ?? defaultRunPi)(
         launch,
         {
@@ -368,7 +371,7 @@ export class ChatAgent {
           sessionsDir: paths.chatSessions,
           timeoutSec: mateTunables().num("chat.timeoutSec"),
           maxCostUsd: config.maxCostUsd,
-          chat: { sessionId: `mate-chat-${this.state.epoch}`, systemPrompt, actionsPath },
+          chat: { sessionId: `mate-chat-${this.state.epoch}`, systemPrompt: promptParts.rules, sectionsPath, actionsPath },
           ...(request.images?.length ? { images: request.images } : {}),
         },
         this.abort.signal,
@@ -381,6 +384,7 @@ export class ChatAgent {
       await askPermission(paths, duty, runId, blockedPath, this.now(), request.text).catch((error: Error) => this.options.log(`chat permission ask error ${error.message}`));
       const actions = await readChatActions(actionsPath);
       await rm(actionsPath, { force: true });
+      await rm(sectionsPath, { force: true });
       const notes: string[] = [];
       for (const action of actions.slice(0, 5)) {
         notes.push(await this.doAction(action, request.source).catch((error: Error) => `⚠️ ${error.message}`));

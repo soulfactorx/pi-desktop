@@ -48,11 +48,15 @@ describe("piArgs", () => {
     expect(chat[chat.indexOf("--session-id") + 1]).toBe("mate-chat-3");
     expect(chat[chat.indexOf("--tools") + 1]).toBe("read,grep,find,ls,bash,mate_do");
     expect(chat[chat.indexOf("--append-system-prompt") + 1]).toBe("대화 안내");
-    expect(piEnv({ ...input, chat: { sessionId: "s", systemPrompt: "", actionsPath: "/h/a.jsonl" } }, "observe")).toMatchObject({
+    // 대화는 상태 섹션 파일을 넘기고, 프롬프트 캐시를 1시간 둔다 (임무 실행은 기본 5분)
+    expect(piEnv({ ...input, chat: { sessionId: "s", systemPrompt: "", actionsPath: "/h/a.jsonl", sectionsPath: "/h/s.json" } }, "observe")).toMatchObject({
       PI_DESKTOP_MATE_PROFILE: "chat",
       PI_DESKTOP_MATE_ACTIONS: "/h/a.jsonl",
+      PI_DESKTOP_MATE_SECTIONS: "/h/s.json",
+      PI_CACHE_RETENTION: "long",
     });
     expect(piEnv(input, "observe")).toMatchObject({ PI_DESKTOP_MATE_PROFILE: "observe", PI_DESKTOP_MATE_DUTY: "ci" });
+    expect(piEnv(input, "observe")).not.toHaveProperty("PI_CACHE_RETENTION");
     // 관찰자 실행은 제안에 붙일 주제를 넘긴다
     expect(piEnv({ ...input, topic: "untested-edit" }, "propose")).toMatchObject({ PI_DESKTOP_MATE_TOPIC: "untested-edit" });
     expect(piEnv(input, "observe")).not.toHaveProperty("PI_DESKTOP_MATE_TOPIC");
