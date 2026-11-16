@@ -25,7 +25,12 @@ export function PackagesPage({ onError }: { onError: (message: string) => void }
         <span className="muted">Pi 패키지(확장·스킬·프롬프트 묶음)를 이 앱에 설치합니다. Pi Desktop·Mate에 설치한 것과는 따로입니다</span>
       </header>
       <div className="page-body">
-        {pkgs.changed && <p className="notice-line small-text">바꾼 확장은 새 대화부터 적용됩니다. 열린 대화는 닫고 다시 여세요.</p>}
+        {pkgs.changed && (
+          <p className="notice-line small-text">
+            바꾼 확장은 <strong>새 대화</strong>(+ 새 대화)부터 적용됩니다. 지난 대화를 닫았다 다시 열거나 이어 열면 붙지 않을 수 있습니다: pi-web-access처럼
+            대화를 시작할 때 고른 도구를 그 대화 내내 지키는 패키지가 있습니다.
+          </p>
+        )}
 
         <section className="card">
           <h3>패키지 설치</h3>
