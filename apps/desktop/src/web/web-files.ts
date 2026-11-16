@@ -11,6 +11,9 @@ export function createWebFiles(invoke: (channel: string, ...args: unknown[]) => 
     remove: (paths) => invoke(FileChannels.remove, paths),
     readText: (path) => invoke(FileChannels.readText, path),
     writeText: (path, text, baseMtime) => invoke(FileChannels.writeText, path, text, baseMtime),
+    usageStart: (path, refresh) => invoke(FileChannels.usageStart, path, refresh === true),
+    usagePoll: (id) => invoke(FileChannels.usagePoll, id),
+    usageCancel: (id) => invoke(FileChannels.usageCancel, id),
     upload: async (dir, file) => invoke(FileChannels.upload, dir, file.name, await base64(file)),
     download: async (path) => {
       const { url } = (await invoke(FileChannels.downloadTicket, path)) as { url: string };

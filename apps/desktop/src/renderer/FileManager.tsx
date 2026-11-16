@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FileEntry, FileListing, WebFilesApi } from "../shared/web-files";
+import { rebuildableHint, type FileEntry, type FileListing, type UsageSnapshot, type WebFilesApi } from "../shared/web-files";
 import { formatRelative } from "./format";
 
 /**
@@ -9,6 +9,7 @@ import { formatRelative } from "./format";
  * - 폴더 누르기: 들어가기. 파일 누르기: 그 파일의 할 일(보기·고치기, 내려받기, 이름 바꾸기, 복사·이동, 지우기)
  * - 고르기를 켜면 여러 개를 골라 복사·이동·지우기. 복사·이동은 붙여 넣을 폴더로 가서 "여기에 붙여 넣기"
  * - 지금 폴더에서 새 세션을 연다 (로컬 호스트 탭)
+ * - [용량]을 켜면 폴더마다 차지하는 크기를 세어 큰 것부터 보인다 (서버의 disk-usage.ts). 끄면 세지 않는다
  */
 
 type Clip = { mode: "move" | "copy"; paths: string[] };
@@ -21,6 +22,15 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
 }
+
+/** 계산에 걸린 시간 */
+function formatDuration(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}초` : `${Math.floor(s / 60)}분 ${s % 60}초`;
+}
+
+/** 계산 중인 결과를 다시 받아 오는 간격 */
+const USAGE_POLL_MS = 700;
 
 function cleanError(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
@@ -54,6 +64,13 @@ export function FileManager({ api, onClose, onOpenSession }: { api: WebFilesApi;
   const [confirmDelete, setConfirmDelete] = useState<string[]>();
   const [editor, setEditor] = useState<{ path: string; text: string; mtime: number; dirty: boolean }>();
   const upload = useRef<HTMLInputElement>(null);
+  // 용량 보기: 켜져 있을 때만 서버가 센다
+  const [usageOn, setUsageOn] = useState(false);
+  const [usage, setUsage] = useState<UsageSnapshot>();
+  const [usageError, setUsageError] = useState<string>();
+  const [showLargest, setShowLargest] = useState(false);
+  /** 늘리면 지금 폴더의 용량을 다시 받아 온다 (refresh면 처음부터 다시 센다) */
+  const [usageRequest, setUsageRequest] = useState({ n: 0, refresh: false });
 
   const run = useCallback(async (work: () => Promise<unknown>, done?: string) => {
     setBusy(true);
@@ -84,8 +101,45 @@ export function FileManager({ api, onClose, onOpenSession }: { api: WebFilesApi;
   }, [load]);
 
   const here = listing?.path ?? "";
-  const reload = () => load(here);
-  const entries = (listing?.entries ?? []).filter((e) => showHidden || !e.name.startsWith("."));
+  const reload = async () => {
+    await load(here);
+    // 서버가 바뀐 만큼 고쳐 둔 용량을 다시 받는다 (지운 것은 빠지고, 그 밖은 "바뀜" 표시)
+    setUsageRequest((r) => ({ n: r.n + 1, refresh: false }));
+  };
+
+  // 용량 계산: 폴더를 옮기거나 끄면 멈춘다
+  useEffect(() => {
+    if (!usageOn || !here) return;
+    let stopped = false;
+    let jobId = "";
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const show = (snap: UsageSnapshot) => {
+      if (stopped) return;
+      jobId = snap.id;
+      setUsage(snap);
+      if (!snap.done) timer = setTimeout(() => void poll(), USAGE_POLL_MS);
+    };
+    const fail = (e: unknown) => !stopped && setUsageError(cleanError(e));
+    const poll = () => api.usagePoll(jobId).then(show, fail);
+    setUsageError(undefined);
+    setUsage((prev) => (prev?.path === here ? prev : undefined));
+    api.usageStart(here, usageRequest.refresh).then(show, fail);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      if (jobId) void api.usageCancel(jobId).catch(() => undefined);
+    };
+  }, [api, here, usageOn, usageRequest]);
+
+  const visible = (e: FileEntry) => showHidden || !e.name.startsWith(".");
+  const usageHere = usageOn && usage?.path === here ? usage : undefined;
+  const entries: Array<FileEntry & { count?: number; done?: boolean }> = (usageHere ? usageHere.items : (listing?.entries ?? [])).filter(visible);
+  const toggleUsage = () => {
+    setUsageOn((v) => !v);
+    setUsage(undefined);
+    setShowLargest(false);
+  };
+  const recount = () => setUsageRequest((r) => ({ n: r.n + 1, refresh: true }));
 
   const toggleHidden = () => {
     setShowHidden((v) => {
@@ -223,7 +277,39 @@ export function FileManager({ api, onClose, onOpenSession }: { api: WebFilesApi;
           <button type="button" className={showHidden ? "active" : ""} onClick={toggleHidden} title="이름이 .으로 시작하는 파일">
             숨긴 파일
           </button>
+          <button type="button" className={usageOn ? "active" : ""} onClick={toggleUsage} title="폴더마다 차지하는 크기를 세어 큰 것부터 보입니다">
+            📊 용량
+          </button>
         </div>
+        {usageOn && (
+          <div className="file-usage-bar" role="status">
+            {usageError ? (
+              <span className="error-text">{usageError}</span>
+            ) : !usageHere ? (
+              <span className="muted">용량을 세는 중…</span>
+            ) : (
+              <span>
+                합계 <strong>{formatSize(usageHere.total)}</strong> · {usageHere.count.toLocaleString("ko-KR")}개
+                {!usageHere.done
+                  ? ` · 세는 중… ${formatDuration(usageHere.elapsedMs)}`
+                  : usageHere.id
+                    ? ` · ${formatDuration(usageHere.elapsedMs)} 걸림`
+                    : ` · 센 때 ${formatRelative(usageHere.at)}`}
+                {usageHere.partial && <span className="warn-text"> · 시간이 다 되어 일부만 셈</span>}
+                {usageHere.stale && <span className="warn-text"> · 센 뒤에 바뀐 곳이 있음</span>}
+                {usageHere.skipped > 0 && <span className="muted"> · 읽지 못한 곳 {usageHere.skipped}</span>}
+              </span>
+            )}
+            <span className="file-usage-actions">
+              <button type="button" className="small" disabled={!usageHere?.largest.length} onClick={() => setShowLargest(true)}>
+                큰 파일
+              </button>
+              <button type="button" className="small" disabled={Boolean(usageHere && !usageHere.done)} onClick={recount}>
+                다시 계산
+              </button>
+            </span>
+          </div>
+        )}
         {clip && (
           <div className="banner info file-clip">
             <span>
@@ -264,7 +350,7 @@ export function FileManager({ api, onClose, onOpenSession }: { api: WebFilesApi;
           {entries.length === 0 && <li className="muted file-empty">{listing ? "비어 있습니다" : "읽는 중…"}</li>}
           {entries.map((entry) => (
             <li key={entry.path} className={selected.has(entry.path) ? "picked" : undefined}>
-              <button type="button" className="file-row" onClick={() => openEntry(entry)}>
+              <button type="button" className={usageHere ? "file-row by-size" : "file-row"} onClick={() => openEntry(entry)}>
                 {selecting && <input type="checkbox" readOnly checked={selected.has(entry.path)} tabIndex={-1} />}
                 <span className="file-icon" aria-hidden="true">
                   {entry.dir ? "📁" : "📄"}
@@ -273,10 +359,24 @@ export function FileManager({ api, onClose, onOpenSession }: { api: WebFilesApi;
                   {entry.name}
                   {entry.link ? " ↪" : ""}
                 </span>
-                <span className="file-meta muted">
-                  {entry.dir ? "" : `${formatSize(entry.size)} · `}
-                  {entry.mtime ? formatRelative(entry.mtime) : ""}
-                </span>
+                {usageHere ? (
+                  <span className="file-meta muted">
+                    <span className={entry.done === false ? "file-size counting" : "file-size"}>
+                      {entry.link ? "링크" : entry.done === false && !usageHere.id ? "안 셈 (다시 계산)" : `${formatSize(entry.size)}${entry.done === false ? "…" : ""}`}
+                    </span>
+                    {usageHere.total > 0 && !entry.link && ` · ${Math.round((entry.size / usageHere.total) * 100)}%`}
+                    {entry.dir && entry.count ? ` · ${entry.count.toLocaleString("ko-KR")}개` : ""}
+                    {rebuildableHint(entry.name, entry.dir) && <span className="file-hint"> · ♻ {rebuildableHint(entry.name, entry.dir)}</span>}
+                    <span className="file-usage-meter" aria-hidden="true">
+                      <span style={{ width: `${usageHere.total > 0 && !entry.link ? Math.max(0.5, (entry.size / usageHere.total) * 100) : 0}%` }} />
+                    </span>
+                  </span>
+                ) : (
+                  <span className="file-meta muted">
+                    {entry.dir ? "" : `${formatSize(entry.size)} · `}
+                    {entry.mtime ? formatRelative(entry.mtime) : ""}
+                  </span>
+                )}
               </button>
               {!selecting && (
                 <button type="button" className="file-more" aria-label={`${entry.name} 할 일`} onClick={() => setAction(entry)}>
@@ -344,6 +444,39 @@ export function FileManager({ api, onClose, onOpenSession }: { api: WebFilesApi;
               <button type="button" role="menuitem" className="danger" onClick={() => (setAction(undefined), setConfirmDelete([action.path]))}>
                 지우기
               </button>
+            </div>
+          </div>
+        )}
+
+        {showLargest && usageHere && (
+          <div className="file-sheet-backdrop" onClick={() => setShowLargest(false)}>
+            <div className="file-sheet file-largest" role="menu" onClick={(e) => e.stopPropagation()}>
+              <strong className="file-sheet-title">이 폴더 아래 큰 파일 {usageHere.largest.length}개</strong>
+              <div className="file-largest-list">
+                {usageHere.largest.map((f) => {
+                  const name = f.path.split("/").pop() ?? f.path;
+                  const where = f.path.slice(here.length + 1, f.path.length - name.length - 1);
+                  return (
+                    <button
+                      key={f.path}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => (setShowLargest(false), setAction({ name, path: f.path, dir: false, link: false, size: f.size, mtime: f.mtime }))}
+                    >
+                      <span className="file-name">{name}</span>
+                      <span className="muted">
+                        {formatSize(f.size)}
+                        {where ? ` · ${where}` : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="file-sheet-actions">
+                <button type="button" onClick={() => setShowLargest(false)}>
+                  닫기
+                </button>
+              </div>
             </div>
           </div>
         )}

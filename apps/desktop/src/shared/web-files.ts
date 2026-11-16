@@ -13,6 +13,9 @@ export const FileChannels = {
   writeText: "pi-web:files-write",
   upload: "pi-web:files-upload",
   downloadTicket: "pi-web:files-download",
+  usageStart: "pi-web:files-usage-start",
+  usagePoll: "pi-web:files-usage-poll",
+  usageCancel: "pi-web:files-usage-cancel",
 } as const;
 
 /** 내려받기 주소 (티켓을 붙인다) */
@@ -33,6 +36,71 @@ export interface FileListing {
   entries: FileEntry[];
 }
 
+/** 용량 보기의 한 줄 (지금 폴더 바로 아래의 파일·폴더) */
+export interface UsageItem {
+  name: string;
+  path: string;
+  dir: boolean;
+  link: boolean;
+  /** 디스크에서 차지하는 크기 (바이트). 계산 중이면 지금까지 센 만큼 */
+  size: number;
+  /** 안의 파일·폴더 수 (자기 포함) */
+  count: number;
+  /** 다 셌는지 */
+  done: boolean;
+  mtime: number;
+}
+
+/** 큰 파일 모아 보기의 한 줄 */
+export interface LargeFile {
+  path: string;
+  size: number;
+  mtime: number;
+}
+
+/** 용량 계산 결과 (계산 중에도 지금까지 센 것을 돌려준다) */
+export interface UsageSnapshot {
+  /** 계산 작업 id. 이미 센 결과를 그대로 돌려줄 때는 "" */
+  id: string;
+  path: string;
+  done: boolean;
+  /** 시간이 다 되어 일부만 셌다 */
+  partial: boolean;
+  /** 센 뒤에 바뀐 곳이 있어 합계가 맞지 않을 수 있다 (다시 계산하면 맞다) */
+  stale: boolean;
+  total: number;
+  count: number;
+  /** 읽지 못해 건너뛴 곳 수 (권한 등) */
+  skipped: number;
+  elapsedMs: number;
+  /** 센 시각 (이미 센 결과를 돌려줄 때) */
+  at: number;
+  /** 큰 것부터 */
+  items: UsageItem[];
+  /** 이 폴더 아래 큰 파일 (큰 것부터, 30개까지) */
+  largest: LargeFile[];
+}
+
+/** 다시 받거나 다시 만들 수 있는 폴더 (지워도 되는지 판단을 돕는 표시). 이름 → 설명 */
+const REBUILDABLE: Record<string, string> = {
+  node_modules: "npm install로 다시 받을 수 있음",
+  ".npm": "npm 캐시: 필요하면 다시 받음",
+  ".cache": "프로그램 캐시: 필요하면 다시 만듦",
+  __pycache__: "파이썬이 다시 만듦",
+  ".gradle": "Gradle 캐시: 다시 받을 수 있음",
+  ".pnpm-store": "pnpm 캐시: 다시 받을 수 있음",
+  ".yarn-cache": "Yarn 캐시: 다시 받을 수 있음",
+  ".pytest_cache": "pytest가 다시 만듦",
+  ".mypy_cache": "mypy가 다시 만듦",
+  ".next": "Next.js 빌드 결과: 다시 만들 수 있음",
+  ".turbo": "Turborepo 캐시: 다시 만들 수 있음",
+};
+
+/** 다시 받을 수 있는 폴더면 그 설명 */
+export function rebuildableHint(name: string, dir: boolean): string | undefined {
+  return dir && Object.hasOwn(REBUILDABLE, name) ? REBUILDABLE[name] : undefined;
+}
+
 export interface WebFilesApi {
   list(path?: string): Promise<FileListing>;
   makeDir(parent: string, name: string): Promise<string>;
@@ -45,6 +113,11 @@ export interface WebFilesApi {
   upload(dir: string, file: File): Promise<string>;
   /** 브라우저가 파일을 내려받게 한다 */
   download(path: string): Promise<void>;
+  /** 폴더 용량 계산을 시작한다 (이미 센 결과가 있으면 그것을 바로 돌려준다. refresh면 다시 센다) */
+  usageStart(path: string, refresh?: boolean): Promise<UsageSnapshot>;
+  /** 계산 중인 결과 */
+  usagePoll(id: string): Promise<UsageSnapshot>;
+  usageCancel(id: string): Promise<void>;
 }
 
 /** 휴대폰 알림의 open 값: 이 세션을 연다 (뒤에 JSON {hostId, sessionId}) */
