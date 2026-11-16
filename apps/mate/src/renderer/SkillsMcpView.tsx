@@ -208,6 +208,11 @@ export function SkillsMcpView({ act }: { act: Act }) {
       </form>
       <div className="muted small-text">패키지는 코드를 실행합니다. 믿을 수 있는 것만 설치하세요. 설치에는 몇 분이 걸릴 수 있습니다.</div>
       {pkgs.busy && <div className="small-text">{pkgs.busy} 중…</div>}
+      {pkgs.changed && (
+        <div className="muted small-text">
+          바꾼 패키지는 다음 임무 실행부터 쓰입니다. 대화에서 쓰려면 대화 탭의 <strong>새 대화</strong>를 누르세요 (이어 온 대화에는 붙지 않을 수 있습니다).
+        </div>
+      )}
       {pkgs.result && (
         <div className="detail">
           <div className={pkgs.result.ok ? "small-text" : "small-text bad-text"}>

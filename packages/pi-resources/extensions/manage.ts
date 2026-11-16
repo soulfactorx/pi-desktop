@@ -165,7 +165,11 @@ async function refreshPaths(home: string): Promise<void> {
 }
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: {} });
-const AFTER = () => (appHome() ? "새 대화부터 적용됩니다." : "지금 세션에 쓰려면 /reload, 아니면 새 세션부터 적용됩니다.");
+// 지난 대화를 이어 열어도 붙지 않는 패키지가 있다 (pi-web-access는 대화를 시작할 때 고른 도구를 그 대화 내내 지킨다)
+const AFTER = () =>
+  appHome()
+    ? "새 대화부터 적용됩니다. 지금 대화나 이어 연 지난 대화에는 붙지 않을 수 있으니, 사용자에게 새 대화를 열어 달라고 안내하라."
+    : "지금 세션에 쓰려면 /reload, 아니면 새 세션부터 적용됩니다.";
 
 export default function manage(pi: any): void {
   // 툴 설명문은 Pi Desktop·Agent 설정에서 바꿀 수 있다 (DESIGN-APPS.md §7). 데몬이 홈을 알려 줄 때만 (id는 daemon.tool.*)
