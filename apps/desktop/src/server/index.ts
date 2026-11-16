@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { lstat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { parseArgs } from "node:util";
@@ -11,7 +12,7 @@ import { ShellChannels } from "@pi-desktop/web-shell/protocol";
 import { IpcChannels, type UpdateState } from "../shared/api";
 import { ActionLog } from "../main/action-log";
 import { agentVersion } from "../main/agent-build";
-import { initAppTunables } from "../main/app-tunables";
+import { appNum, initAppTunables } from "../main/app-tunables";
 import { CopyStore } from "../main/copies";
 import { HostManager } from "../main/host-manager";
 import { ImportStore } from "../main/imports";
@@ -24,6 +25,7 @@ import { webWorkspacesState } from "./web-workspaces";
 import { setWebEmbed, type WebEmbed } from "@pi-desktop/web-shell/embed";
 import { sessionNote } from "./session-notify";
 import { FileManager } from "./file-manager";
+import { DiskUsage } from "./disk-usage";
 import { FILE_DOWNLOAD_PATH, FileChannels, sessionOpenValue } from "../shared/web-files";
 
 /**
@@ -149,20 +151,64 @@ router.handle(IpcChannels.showNotification, () => false);
 
 // 파일 관리자 (설계 §5.10): 서버(Termux)의 홈 폴더 아래를 화면에서 다룬다
 const files = new FileManager();
+// 용량 보기: 원할 때만 센다. 파일을 바꾸면 기억한 용량을 고친다 (지우면 빼고, 그 밖은 "바뀜"으로)
+const usage = new DiskUsage({ maxMs: () => appNum("app.diskUsageMaxSeconds") * 1000 });
+const strings = (paths: unknown) => (Array.isArray(paths) ? paths.map(String) : []);
 router.handle(FileChannels.list, (_peer, path?: string) => files.list(path));
-router.handle(FileChannels.makeDir, (_peer, parent: string, name: string) => files.makeDir(parent, name));
-router.handle(FileChannels.makeFile, (_peer, parent: string, name: string) => files.makeFile(parent, name));
-router.handle(FileChannels.rename, (_peer, path: string, name: string) => files.rename(path, name));
-router.handle(FileChannels.transfer, (_peer, paths: string[], dest: string, mode: "move" | "copy") =>
-  files.transfer(Array.isArray(paths) ? paths.map(String) : [], dest, mode === "copy" ? "copy" : "move"),
-);
-router.handle(FileChannels.remove, (_peer, paths: string[]) => files.remove(Array.isArray(paths) ? paths.map(String) : []));
+router.handle(FileChannels.makeDir, async (_peer, parent: string, name: string) => {
+  const made = await files.makeDir(parent, name);
+  usage.changed([made]);
+  return made;
+});
+router.handle(FileChannels.makeFile, async (_peer, parent: string, name: string) => {
+  const made = await files.makeFile(parent, name);
+  usage.changed([made]);
+  return made;
+});
+router.handle(FileChannels.rename, async (_peer, path: string, name: string) => {
+  const from = files.resolvePath(path);
+  const to = await files.rename(path, name);
+  usage.changed([to], [from]);
+  return to;
+});
+router.handle(FileChannels.transfer, async (_peer, paths: string[], dest: string, mode: "move" | "copy") => {
+  const sources = strings(paths);
+  const resolved = sources.map((p) => files.resolvePath(p));
+  try {
+    const done = await files.transfer(sources, dest, mode === "copy" ? "copy" : "move");
+    usage.changed(done, mode === "copy" ? [] : resolved);
+    return done;
+  } catch (error) {
+    // 중간에 멈췄어도 일부는 옮겨졌을 수 있다
+    usage.changed([], mode === "copy" ? [] : resolved, [files.resolvePath(dest)]);
+    throw error;
+  }
+});
+router.handle(FileChannels.remove, async (_peer, paths: string[]) => {
+  const targets = strings(paths);
+  const sizes = await Promise.all(targets.map(async (p) => ({ path: files.resolvePath(p), size: await usage.sizeOf(files.resolvePath(p)) })));
+  try {
+    return await files.remove(targets);
+  } finally {
+    // 지운 것만 뺀다 (중간에 멈춘 경우 남은 것은 그대로 있다)
+    for (const { path, size } of sizes) if (!(await lstat(path).catch(() => undefined))) usage.removed(path, size);
+  }
+});
 router.handle(FileChannels.readText, (_peer, path: string) => files.readText(path));
-router.handle(FileChannels.writeText, (_peer, path: string, text: string, baseMtime?: number) =>
-  files.writeText(path, String(text), typeof baseMtime === "number" ? baseMtime : undefined),
-);
-router.handle(FileChannels.upload, (_peer, dir: string, name: string, base64: string) => files.upload(dir, String(name), String(base64)));
+router.handle(FileChannels.writeText, async (_peer, path: string, text: string, baseMtime?: number) => {
+  const mtime = await files.writeText(path, String(text), typeof baseMtime === "number" ? baseMtime : undefined);
+  usage.changed([files.resolvePath(path)]);
+  return mtime;
+});
+router.handle(FileChannels.upload, async (_peer, dir: string, name: string, base64: string) => {
+  const saved = await files.upload(dir, String(name), String(base64));
+  usage.changed([saved]);
+  return saved;
+});
 router.handle(FileChannels.downloadTicket, async (_peer, path: string) => ({ url: `${FILE_DOWNLOAD_PATH}?ticket=${await files.downloadTicket(path)}`}));
+router.handle(FileChannels.usageStart, (_peer, path: string, refresh?: boolean) => usage.start(files.resolvePath(path), refresh === true));
+router.handle(FileChannels.usagePoll, (_peer, id: string) => usage.poll(String(id)));
+router.handle(FileChannels.usageCancel, (_peer, id: string) => usage.cancel(String(id)));
 
 // 웹 푸시 구독 (화면은 web-shell의 notify.ts)
 router.handle(ShellChannels.pushKey, () => push.publicKey());

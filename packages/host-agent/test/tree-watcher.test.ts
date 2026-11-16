@@ -18,6 +18,10 @@ function extensionTree() {
 }
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** 조건이 될 때까지 기다린다 (바쁜 Windows CI에서는 파일 감시 알림이 늦게 온다) */
+async function waitUntil(done: () => boolean, ms = 3000): Promise<void> {
+  for (const end = Date.now() + ms; !done() && Date.now() < end; ) await wait(25);
+}
 
 describe("snapshot·changedPaths", () => {
   it("폴더 아래를 모두 보되 node_modules는 건너뛰고, 없는 뿌리는 비어 있다", async () => {
@@ -48,6 +52,8 @@ describe("watchTree", () => {
     await wait(150);
     writeFileSync(join(base, "ext", "lib", "a.ts"), "export const x = 1;\n");
     writeFileSync(join(base, "ext", "node_modules", "dep", "index.js"), "2\n");
+    await waitUntil(() => seen.length > 0);
+    // node_modules 알림이 늦게 오지 않는지도 조금 더 본다
     await wait(250);
     expect(seen.flat().map((p) => p.slice(base.length + 1).replace(/\\/g, "/"))).toEqual(["ext/lib/a.ts"]);
     stop();

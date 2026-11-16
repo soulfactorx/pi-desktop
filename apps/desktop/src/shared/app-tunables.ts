@@ -516,6 +516,19 @@ export const APP_TUNABLES: readonly TunableDef[] = [
     locked: "주소가 새어 나가도 오래 쓰이지 않게 하는 보안 한도입니다.",
     source: "apps/desktop/src/server/file-manager.ts",
   },
+  {
+    id: "app.diskUsageMaxSeconds",
+    group: "앱 · 파일·마켓",
+    label: "파일 관리자 용량 계산 시간",
+    purpose: "휴대폰 웹의 파일 관리자에서 [용량]을 켰을 때 한 폴더의 용량을 이 시간까지만 셉니다. 넘으면 센 데까지만 보여 줍니다(일부만 셈).",
+    kind: "number",
+    default: 120,
+    unit: "초",
+    min: 10,
+    max: 1800,
+    integer: true,
+    source: "apps/desktop/src/server/disk-usage.ts",
+  },
 ];
 
 export const APP_TUNABLES_FILE = "app-tunables.json";

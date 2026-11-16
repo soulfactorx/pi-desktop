@@ -179,6 +179,104 @@
   font-size: 12px;
 }
 
+/* 용량 보기 */
+.file-usage-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.file-usage-bar > span:first-child {
+  flex: 1;
+  min-width: 12em;
+}
+
+.file-usage-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.warn-text {
+  color: var(--warn);
+}
+
+.file-size {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.file-size.counting {
+  color: var(--muted);
+}
+
+.file-hint {
+  color: var(--ok);
+}
+
+/* 용량 보기: 크기 줄을 이름 아래에 둔다 */
+.file-row.by-size .file-name,
+.file-row.by-size .file-meta {
+  grid-column: -2;
+}
+
+.file-row.by-size .file-meta {
+  grid-row: 2;
+}
+
+.file-usage-meter {
+  display: block;
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.file-usage-meter > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+.file-largest {
+  max-height: 80%;
+}
+
+.file-largest-list {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-largest-list > button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  height: auto;
+  min-height: 52px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  padding: 8px 4px;
+}
+
+.file-largest-list .muted {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .file-more {
   border: none;
   border-radius: 0;
