@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -5,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { appendBlocked, appendChat, appendChatAction, appendChatQuestion, appendProposal, makeProposal, PERMISSION_OPTIONS, readChat } from "@pi-desktop/mate-kit";
 import { askPermission } from "../src/permission";
 import { addChatRequest, ChatAgent, loadChatState } from "../src/chat/chat-agent";
-import { chatSystemPrompt, openQuestions } from "../src/chat/context";
+import { chatPromptParts, chatSystemPrompt, openQuestions } from "../src/chat/context";
 import { parseSchedulePhrase } from "../src/chat/schedule-phrase";
 import type { RunInput, RunOutcome } from "../src/executor";
 import { matePaths, type MatePaths } from "../src/paths";
@@ -14,6 +15,14 @@ import { readFile } from "node:fs/promises";
 import { WEB_SEARCH } from "../src/chat/web-search";
 import { chatImagesOf, saveChatImages } from "../src/chat/chat-images";
 import { existsSync } from "node:fs";
+
+/** 가짜 Pi가 받은 대화 안내: 규칙과 상태 섹션(파일)을 한 글로 합친다 (실행기는 섹션 파일을 실행 뒤에 지운다) */
+function withSections(input: RunInput): RunInput {
+  if (!input.chat?.sectionsPath) return input;
+  const sections = JSON.parse(readFileSync(input.chat.sectionsPath, "utf8")) as Record<string, string>;
+  return { ...input, chat: { ...input.chat, systemPrompt: [input.chat.systemPrompt, ...Object.values(sections)].join("\n\n") } };
+}
+
 
 describe("실행 시점 표현", () => {
   it("대화에서 쓰는 표현을 계기로 바꾼다", () => {
@@ -51,7 +60,7 @@ describe("ChatAgent", () => {
       exec: noGit,
       log: () => {},
       runPi: (async (_l: unknown, input: RunInput) => {
-        calls.push(input);
+        calls.push(withSections(input));
         return { status: "done", costUsd: 0.002, tokens: 1, proposals: 0, ...reply };
       }) as never,
     });
@@ -171,7 +180,7 @@ describe("ChatAgent", () => {
       exec: noGit,
       log: () => {},
       runPi: (async (_l: unknown, input: RunInput) => {
-        calls.push(input);
+        calls.push(withSections(input));
         if (calls.length === 1) await appendChatAction(input.chat!.actionsPath, { action: "run_duty", duty: "없는 임무" });
         return { status: "done", costUsd: 0, tokens: 1, proposals: 0, summary: "맡겼어요" };
       }) as never,
@@ -184,6 +193,23 @@ describe("ChatAgent", () => {
     // 새 대화를 시작하면 앞 대화의 알림은 넣지 않는다
     await agent.newConversation("app");
     expect(await chatSystemPrompt(paths, Date.now())).not.toContain("찾지 못했어요");
+  });
+
+  it("상태는 섹션으로 나뉘고, 몇십 초 뒤 같은 상태면 섹션이 그대로다 (프롬프트 캐시)", async () => {
+    const duty = { id: "hn", name: "HN 요약", enabled: true, cwd: paths.home, prompt: "인기 10개", profile: "observe", trigger: { kind: "manual" }, createdAt: 1 };
+    await saveDuty(paths, duty, "app");
+    const t = new Date(2026, 10, 16, 9, 30, 5).getTime();
+    const first = await chatPromptParts(paths, t);
+    expect(first.rules).toContain("너는 Pi Desktop Mate다");
+    expect(first.rules).not.toContain("HN 요약");
+    expect(first.sections.mate_duties).toContain("HN 요약");
+    expect(Object.keys(first.sections).every((name) => /^mate_[a-z_]+$/.test(name))).toBe(true);
+    // 같은 분 안에서는 아무 섹션도 바뀌지 않는다
+    expect((await chatPromptParts(paths, t + 40_000)).sections).toEqual(first.sections);
+    // 분이 바뀌면 상태 섹션만 바뀐다
+    const later = await chatPromptParts(paths, t + 120_000);
+    const changed = Object.keys(later.sections).filter((name) => later.sections[name] !== first.sections[name]);
+    expect(changed).toEqual(["mate_status"]);
   });
 
   it("사용자가 앱에서 고친 임무 내역이 맥락에 들어간다", async () => {
@@ -299,7 +325,7 @@ describe("ChatAgent", () => {
       exec: noGit,
       log: () => {},
       runPi: (async (_l: unknown, input: RunInput) => {
-        calls.push(input);
+        calls.push(withSections(input));
         if (calls.length === 1) await appendChatAction(input.chat!.actionsPath, { action: "enable_web" });
         return { status: "done", costUsd: 0, tokens: 1, proposals: 0, summary: calls.length === 1 ? "웹 검색이 필요해요" : "서울은 맑아요" };
       }) as never,
@@ -345,7 +371,7 @@ describe("ChatAgent", () => {
       exec: noGit,
       log: () => {},
       runPi: (async (_l: unknown, input: RunInput) => {
-        calls.push(input);
+        calls.push(withSections(input));
         if (calls.length === 1) await appendChatAction(input.chat!.actionsPath, { action: "enable_web" });
         return { status: "done", costUsd: 0, tokens: 1, proposals: 0, summary: calls.length === 1 ? "웹 검색이 필요해요" : "서울은 맑아요" };
       }) as never,

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Type } from "typebox";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendChatQuestion, appendChatAction } from "../../src/chat";
@@ -16,6 +17,16 @@ export default function mateChatExtension(pi: ExtensionAPI): void {
   const chat = process.env[MATE_ENV.chat];
   const actions = process.env[MATE_ENV.actions];
   const profile = process.env[MATE_ENV.profile];
+  const sectionsPath = process.env[MATE_ENV.sections];
+
+  // Mate 대화: 실행기가 만든 상태 섹션을 시스템 안내에 넣는다.
+  // Pi는 이어 쓰는 세션에서 섹션마다 앞 차례와 비교해 바뀐 것만 덧붙이므로, 대화 앞부분이 그대로 남아 프롬프트 캐시가 맞는다
+  if (sectionsPath) {
+    pi.on("before_agent_start", (event) => {
+      const sections = readSections(sectionsPath);
+      for (const [name, text] of Object.entries(sections)) event.systemPromptOptions.sections[name] = text;
+    });
+  }
 
   if (chat && (profile === "propose" || profile === "act")) {
     pi.registerTool(
@@ -86,5 +97,20 @@ export default function mateChatExtension(pi: ExtensionAPI): void {
         },
       }),
     );
+  }
+}
+
+/** 섹션 파일(JSON: 이름 → 글). 이름은 Pi가 받는 모양(소문자로 시작)만 쓴다 */
+export function readSections(path: string): Record<string, string> {
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (!raw || typeof raw !== "object") return {};
+    return Object.fromEntries(
+      Object.entries(raw as Record<string, unknown>).filter(
+        (entry): entry is [string, string] => /^[a-z][a-z0-9_-]*$/.test(entry[0]) && entry[0] !== "preamble" && typeof entry[1] === "string" && entry[1].length > 0,
+      ),
+    );
+  } catch {
+    return {};
   }
 }

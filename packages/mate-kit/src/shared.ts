@@ -17,6 +17,8 @@ export const MATE_ENV = {
   chat: "PI_DESKTOP_MATE_CHAT",
   /** 대화 한 차례에서 mate_do가 남기는 할 일 목록 (실행기가 대화가 끝난 뒤 처리) */
   actions: "PI_DESKTOP_MATE_ACTIONS",
+  /** 대화 한 차례의 Mate 상태 섹션(JSON: 이름 → 글). mate-chat 확장이 Pi 시스템 안내의 섹션으로 넣는다 */
+  sections: "PI_DESKTOP_MATE_SECTIONS",
   /** 사용자가 이 임무에 허용한 명령 이름과 MCP 도구 이름 (쉼표로 구분, 예: curl,mcp__github__list_prs). mate-guard가 통과시킨다 */
   grants: "PI_DESKTOP_MATE_GRANTS",
   /** 허용 목록에 없어 막힌 명령을 남기는 파일(JSONL). 실행이 끝나면 실행기가 읽어 사용자에게 허용을 묻는다 */
