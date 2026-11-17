@@ -33,6 +33,8 @@ export function linuxDesktopFile(): string {
 }
 
 export function getAutostart(): AutostartState {
+  // 휴대폰 웹(pi-web)은 Electron이 아니다: 로그인 항목이 없고, Termux를 켤 때 pi-web을 띄우는 것은 Termux:Boot가 맡는다
+  if (!process.versions.electron) return { supported: false, enabled: false, reason: "휴대폰 웹에서는 Termux:Boot에 pi-web start를 걸어 두면 폰을 켤 때 함께 뜹니다" };
   if (!app.isPackaged) return { supported: false, enabled: false, reason: "설치본에서만 쓸 수 있습니다" };
   if (process.platform === "linux") return { supported: true, enabled: existsSync(linuxDesktopFile()) };
   const settings = app.getLoginItemSettings(process.platform === "win32" ? { args: [RUNNER_ONLY_ARG] } : undefined);
