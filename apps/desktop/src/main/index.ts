@@ -1,4 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell, type MenuItemConstructorOptions } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, screen, shell, type MenuItemConstructorOptions } from "electron";
+import { existsSync as fileExists, writeFileSync as writeFlag } from "node:fs";
+import { createAppTray, type AppTray } from "./tray";
 import { loadWindowState, trackWindowState } from "@pi-desktop/window-state";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -46,11 +48,12 @@ if (process.env.PI_DESKTOP_REMOTE_DEBUG_PORT && !app.isPackaged) {
 
 // 설치본은 한 번만 뜬다 (single-instance.ts). 잠금을 못 잡은 두 번째 실행은 창·연결기를 만들지 않고 끝나고,
 // 처음 실행이 second-instance를 받아 기존 창을 앞으로 가져온다.
-// 로그인할 때 띄운 실행(--mate-runner-only, Mate 작업 공간의 "로그인할 때 실행기 시작")은 창 없이 실행기만 확인하고 끝난다.
-// 이 실행은 잠금을 잡지 않는다 (사용자가 연 창과 부딪히지 않게)
+// 로그인할 때 띄운 실행(--mate-runner-only, Mate 작업 공간의 "PC를 켜면 실행기 자동 시작")은 창 없이 트레이에만 뜬다.
+// 실행기를 확인하고 트레이에서 상태를 보인다. 그 뒤 앱을 열면 second-instance로 창을 연다. 이미 앱이 떠 있으면 그 앱이 실행기를 지키므로 끝난다
 const runnerOnlyLaunch = isRunnerOnlyLaunch();
-const isPrimaryInstance = !runnerOnlyLaunch && (!usesSingleInstanceLock(app.isPackaged) || app.requestSingleInstanceLock());
-if (!isPrimaryInstance && !runnerOnlyLaunch) app.quit();
+const isPrimaryInstance = !usesSingleInstanceLock(app.isPackaged) || app.requestSingleInstanceLock();
+if (!isPrimaryInstance) app.quit();
+let appTray: AppTray | undefined;
 
 let mainWindow: BrowserWindow | undefined;
 let hosts: HostManager | undefined;
@@ -141,6 +144,11 @@ let sshHostsRef: SshHostStore | undefined;
 /** 작업 공간 (DESIGN-ONE-APP.md). 지금은 Agent·Mate 미리 보기 */
 const workspaces = new Workspaces({
   window: () => mainWindow,
+  // 트레이에만 있을 때 알림·트레이 메뉴로 작업 공간을 열면 창부터 연다
+  openWindow: () => {
+    createWindow();
+    return mainWindow;
+  },
   sendToShell: (channel, ...args) => sendToRenderer(channel, ...args),
   rendererFile: (id) => join(here, "../renderer", id, "index.html"),
   sshHosts: () => sshHostsRef,
@@ -311,13 +319,6 @@ app.on("second-instance", (_event, argv) => {
   if (route) workspaces.openRoute(route);
 });
 
-if (runnerOnlyLaunch) {
-  void app.whenReady().then(async () => {
-    await workspaces.loginLaunch().catch(() => undefined);
-    app.quit();
-  });
-}
-
 app.whenReady().then(() => {
   if (!isPrimaryInstance) return;
   const script = agentScriptPath();
@@ -374,7 +375,19 @@ app.whenReady().then(() => {
     return true;
   });
   workspaces.start();
-  createWindow();
+  // 로그인할 때 뜬 실행은 창 없이 트레이에만 (실행기는 위의 start가 띄우고, 여기서 한 번 더 확인한다)
+  if (runnerOnlyLaunch) void workspaces.loginLaunch().catch(() => undefined);
+  else createWindow();
+  // 트레이: Mate 실행기 상태를 보이고, 창을 닫아도 앱은 여기에 남는다 (tray.ts)
+  appTray = createAppTray(app.isPackaged ? join(process.resourcesPath, "icon.png") : join(app.getAppPath(), "build", "icon.png"), {
+    open: () => {
+      if (!revealWindow(mainWindow)) createWindow();
+    },
+    openMate: (tab) => workspaces.openRoute({ workspace: "mate", tab }),
+    startMate: () => workspaces.ensureMateRunner().then(() => appTray?.refresh()),
+    mateStatus: () => workspaces.mateStatus(),
+    quit: () => app.quit(),
+  });
   // 알림 센터의 알림을 누르면 Windows가 앱 주소로 이 앱을 연다 (Agent·Mate 알림, app-notification.ts). 설치본만 등록한다
   if (process.platform === "win32" && app.isPackaged && !app.isDefaultProtocolClient(APP_PROTOCOL)) app.setAsDefaultProtocolClient(APP_PROTOCOL);
   // 앱이 꺼져 있을 때 알림을 눌러 열렸으면 그 화면으로 간다 (작업 공간 화면이 뜬 뒤)
@@ -402,11 +415,31 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (process.platform === "darwin") return;
+  // 트레이가 있으면 앱은 트레이에 남는다 (Mate 실행기 상태·다시 열기). 끝내기는 트레이 메뉴
+  if (appTray) return trayNoticeOnce();
+  app.quit();
 });
+
+/** 처음 창을 닫았을 때 한 번만, 트레이에 남았다고 알린다 */
+function trayNoticeOnce(): void {
+  const flag = join(app.getPath("userData"), "tray-notice-shown");
+  if (fileExists(flag)) return;
+  try {
+    writeFlag(flag, `${Date.now()}\n`);
+    new Notification({
+      title: "Pi Desktop은 트레이에 남아 있습니다",
+      body: "알림 영역의 Pi Desktop 아이콘에서 Mate 실행기 상태를 보고 다시 열 수 있습니다. 끝내려면 아이콘 메뉴의 '끝내기'를 누르세요.",
+    }).show();
+  } catch {
+    // 알림을 못 띄워도 트레이는 그대로
+  }
+}
 
 // 앱을 닫아도 각 호스트의 데몬과 Pi 세션은 계속 돈다. 연결기만 정리한다 (설계 §3.4).
 app.on("will-quit", () => {
+  appTray?.dispose();
+  appTray = undefined;
   terminals.dispose();
   hosts?.dispose();
   workspaces.dispose();

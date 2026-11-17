@@ -46,6 +46,18 @@ export function SettingsView({ overview, act, setup }: { overview: Overview; act
 
       <h2>실행</h2>
       <label className="radio">
+        <input
+          type="checkbox"
+          disabled={!autostart?.supported}
+          checked={autostart?.enabled ?? false}
+          onChange={() => void act(async () => setAutostartState(await window.mate.setAutostart(!autostart?.enabled)))}
+        />
+        <strong>PC를 켜면(로그인하면) 실행기 자동 시작</strong>
+        <span className="muted">
+          {autostart?.reason ?? "Pi Desktop을 열지 않아도 임무 시간표·변화 감지·활동/시스템 관찰·휴대폰 연결이 돕니다. 로그인할 때 창 없이 실행기만 띄웁니다"}
+        </span>
+      </label>
+      <label className="radio">
         <input type="checkbox" checked={config.paused} onChange={() => void act(() => window.mate.saveConfig({ paused: !config.paused }))} />
         <strong>일시 정지</strong> <span className="muted">시간표·변화 감지 실행을 멈춥니다. "지금 실행"은 그대로 됩니다.</span>
       </label>
@@ -139,16 +151,6 @@ export function SettingsView({ overview, act, setup }: { overview: Overview; act
         <span>데이터 폴더</span>
         <span className="path">{overview.home}</span>
       </div>
-      <label className="radio">
-        <input
-          type="checkbox"
-          disabled={!autostart?.supported}
-          checked={autostart?.enabled ?? false}
-          onChange={() => void act(async () => setAutostartState(await window.mate.setAutostart(!autostart?.enabled)))}
-        />
-        <strong>로그인할 때 실행기 시작</strong>
-        <span className="muted">{autostart?.reason ?? "PC를 켜고 앱을 열지 않아도 시간표·변화 감지가 돕니다 (창은 뜨지 않음)"}</span>
-      </label>
       <label className="radio">
         <input
           type="checkbox"

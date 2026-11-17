@@ -7,7 +7,7 @@ import { createAgentMain, type AgentMain, type SshHostList } from "../../../agen
 import { IpcChannels as AgentChannels } from "../../../agent/src/shared/api";
 import { IpcChannels as MateChannels } from "../../../mate/src/shared/api";
 import type { NotificationRoute } from "./app-notification";
-import { createMateMain, type MateMain } from "../../../mate/src/main/mate-main";
+import { createMateMain, type MateLocalStatus, type MateMain } from "../../../mate/src/main/mate-main";
 import { getAutostart, setAutostart } from "../../../mate/src/main/autostart";
 
 /** 징검다리 Mate 0.7.0이 남기는 표시: 옛 Mate에서 "로그인할 때 실행기 시작"이 켜져 있었다 (Pi Desktop이 이어받는다) */
@@ -36,6 +36,8 @@ interface Settings {
 
 export interface WorkspaceHost {
   window(): BrowserWindow | undefined;
+  /** 창이 없을 때(트레이에만 있을 때) 창을 연다 */
+  openWindow?(): BrowserWindow | undefined;
   /** Pi Desktop 화면(메인 프레임)에 보낸다 */
   sendToShell(channel: string, ...args: unknown[]): void;
   /** 이 플러그인 화면의 파일 (설치본·개발 빌드 모두 out/renderer/<id>/index.html) */
@@ -105,6 +107,17 @@ export class Workspaces {
     if (this.enabled("agent")) this.startAgent();
     if (this.enabled("mate")) this.startMate();
     void this.takeMateAutostartWish();
+  }
+
+  /** 이 PC Mate 실행기의 상태 (트레이). Mate 작업 공간이 꺼져 있으면 undefined */
+  async mateStatus(): Promise<MateLocalStatus | undefined> {
+    if (!this.enabled("mate")) return undefined;
+    return this.mateMain().localStatus().catch(() => undefined);
+  }
+
+  /** 이 PC의 Mate 실행기가 없으면 띄운다 (트레이의 "다시 시작") */
+  async ensureMateRunner(): Promise<void> {
+    if (this.enabled("mate")) await this.mateMain().ensureRunner();
   }
 
   /** 로그인할 때 띄운 실행(--mate-runner-only): 창 없이 Mate 실행기만 확인한다 */
@@ -268,8 +281,15 @@ export class Workspaces {
       else then();
       return;
     }
-    const win = this.host.window();
-    if (win?.isMinimized()) win.restore();
+    let win = this.host.window();
+    if (!win || win.isDestroyed()) {
+      // 트레이에만 있던 앱: 창을 열고 화면이 뜬 뒤에 그 작업 공간을 보인다
+      const opened = this.host.openWindow?.();
+      if (!opened) return;
+      opened.webContents.once("did-finish-load", () => this.reveal(id, then));
+      return;
+    }
+    if (win.isMinimized()) win.restore();
     win?.show();
     win?.focus();
     this.show(id);

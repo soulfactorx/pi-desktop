@@ -2,9 +2,14 @@ import { app, dialog, ipcMain, Notification, shell, type BrowserWindow } from "e
 import { showAppNotification } from "../../../desktop/src/main/app-notification";
 import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { readInbox } from "@pi-desktop/mate-kit";
 import {
+  isAlive,
   loadConfig,
+  loadInboxState,
   loadRemoteState,
+  loadState,
+  readPid,
   mateHome,
   matePaths,
   saveConfig,
@@ -92,6 +97,18 @@ export interface MateMain {
   stopLocalRunner(): Promise<void>;
   /** 로그인할 때 실행: 창 없이 실행기만 확인한다 */
   ensureRunner(): Promise<void>;
+  /** 이 PC 실행기의 상태 (트레이 아이콘). 지금 고른 호스트와 상관없이 이 PC의 Mate 홈을 읽는다 */
+  localStatus(): Promise<MateLocalStatus>;
+}
+
+export interface MateLocalStatus {
+  alive: boolean;
+  heartbeatAt?: number;
+  /** 지금 실행 중인 임무 id */
+  current?: string;
+  todayRuns: number;
+  /** 아직 확인하지 않은 제안 수 */
+  newInbox: number;
 }
 
 export function createMateMain(ctx: MateMainContext): MateMain {
@@ -504,5 +521,16 @@ export function createMateMain(ctx: MateMainContext): MateMain {
     },
     stopLocalRunner: () => runnerCommand(runnerScript(), "stop", runnerEnv()).then(() => undefined),
     ensureRunner,
+    async localStatus() {
+      const [pid, state, items, inboxState] = await Promise.all([readPid(paths), loadState(paths), readInbox(paths.inbox).catch(() => []), loadInboxState(paths)]);
+      return {
+        alive: isAlive(pid),
+        ...(state.heartbeatAt ? { heartbeatAt: state.heartbeatAt } : {}),
+        ...(state.current ? { current: state.current.dutyId } : {}),
+        // 실행기가 날짜를 넘긴 뒤 아직 돌지 않았으면 어제 수다
+        todayRuns: state.today.date === new Date().toLocaleDateString("sv-SE") ? state.today.count : 0,
+        newInbox: items.filter((item) => !inboxState[item.id]).length,
+      };
+    },
   };
 }

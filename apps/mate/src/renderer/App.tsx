@@ -6,6 +6,7 @@ import { HostPicker } from "./HostPicker";
 import { setFolderPickOpener } from "./folder-pick";
 import { PiSetupBanner } from "./PiSetup";
 import { MissingPackagesBanner } from "./MissingPackagesBanner";
+import { AutostartBanner } from "./AutostartBanner";
 import { ActivityView } from "./ActivityView";
 import { ChatView } from "./ChatView";
 import { DutiesView } from "./DutiesView";
@@ -159,6 +160,7 @@ export function App() {
         />
       )}
       <MissingPackagesBanner act={act} onOpen={() => setTab("tools")} />
+      <AutostartBanner overview={overview} remote={Boolean(host?.remote)} act={act} />
       <main className="content">
         {tab === "chat" && <ChatView overview={overview} now={now} act={act} />}
         {tab === "inbox" && <InboxPanel overview={overview} now={now} act={act} />}
