@@ -7,6 +7,16 @@ import { redact } from "../activity";
  */
 
 /** 로그 한 줄을 남길 수 있게 가린다: 비밀값, 홈 경로·사용자 이름, 메일, IP, 주소의 경로·쿼리, 긴 16진수·base64 */
+/** 여러 줄 글을 줄마다 가린다 (빈 줄은 하나로). 제안의 "자세히 보기"에 쓴다 */
+export function scrubLines(text: string, home: string, user: string, limit = 1500): string {
+  const lines = String(text ?? "")
+    .split(/\r?\n/)
+    .map((l) => scrubText(l, home, user, 400))
+    .filter((l, i, all) => l !== "" || (i > 0 && all[i - 1] !== ""));
+  const out = lines.join("\n").trim();
+  return out.length > limit ? `${out.slice(0, limit)}…` : out;
+}
+
 export function scrubText(text: string, home: string, user: string, limit = 160): string {
   let out = redact(String(text ?? "").replace(/\s+/g, " ").trim()).replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, "<메일>");
   if (home) out = out.split(home).join("~").split(home.replace(/\\/g, "/")).join("~");

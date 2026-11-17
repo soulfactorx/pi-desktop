@@ -496,7 +496,7 @@ export function createMateMain(ctx: MateMainContext): MateMain {
       localOnly("로그인할 때 실행기 시작");
       return ctx.autostart.set(enabled === true);
     });
-    ipcMain.handle(IpcChannels.delegate, (_e, itemId: string) => call("delegate", String(itemId)));
+    ipcMain.handle(IpcChannels.delegate, (_e, itemId: string, folder?: string) => call("delegate", String(itemId), typeof folder === "string" ? folder : null));
     ipcMain.handle(IpcChannels.applyChange, (_e, itemId: string) => call("applyChange", String(itemId)));
     ipcMain.handle(IpcChannels.discardChange, (_e, itemId: string) => call("discardChange", String(itemId)));
     ipcMain.handle(IpcChannels.readSession, (_e, runId: string) => call("readSession", String(runId)));

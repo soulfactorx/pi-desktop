@@ -238,7 +238,8 @@ export interface MateApi {
   /** act 변경과 그 작업 공간을 버린다 */
   discardChange(itemId: string): Promise<void>;
   /** 제안의 맡길 일을 그 폴더에서 바로 실행한다 (git 저장소면 고치기) */
-  delegate(itemId: string): Promise<void>;
+  /** 제안의 맡길 일을 고치기로 실행한다. folder를 주면 그 폴더에서 (제안이 폴더를 모를 때) */
+  delegate(itemId: string, folder?: string): Promise<void>;
   /** 로그인할 때 실행기 시작 (설치본만) */
   getAutostart(): Promise<AutostartView>;
   setAutostart(enabled: boolean): Promise<AutostartView>;

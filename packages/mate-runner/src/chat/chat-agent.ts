@@ -478,9 +478,11 @@ export class ChatAgent {
         if (!item) return `⚠️ 제안 ${str("item")}을(를) 찾지 못했어요.`;
         if (action.action === "delegate") {
           if (!allowFix) return "⚠️ 휴대폰에서 맡기기는 설정에서 허용해야 해요.";
-          const duty = await delegateInboxItem(paths, item.id, this.options.exec);
+          const folder = str("folder") ? await this.resolveFolder(str("folder")) : undefined;
+          if (str("folder") && !folder) return `⚠️ 폴더 "${str("folder")}"을(를) 모르겠어요. /folders로 목록을 보세요.`;
+          const duty = await delegateInboxItem(paths, item.id, this.options.exec, folder);
           await this.track(duty.id, source);
-          return `🛠 맡겼어요: ${item.title}`;
+          return `🛠 맡겼어요: ${item.title} (${folderAlias(duty.cwd)}에서 별도 작업 공간으로 고치고, 적용은 다시 물을게요)`;
         }
         if (item.change) return `⚠️ "${item.title}"은(는) 고친 변경이라 앱·휴대폰의 적용·버리기 버튼으로 처리해 주세요.`;
         if (item.install && action.action === "accept") return `⚠️ "${item.title}"은(는) 설치 제안이라 앱·휴대폰의 적용 버튼으로 처리해 주세요 (내용을 직접 보고 정하도록).`;

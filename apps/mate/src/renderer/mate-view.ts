@@ -273,3 +273,27 @@ export function formatTokens(value: number | undefined): string {
 export function userDuties<T extends { id: string }>(duties: T[]): T[] {
   return duties.filter((d) => !/^(phone|chat|delegated)-/.test(d.id));
 }
+
+/** folder가 base와 같거나 그 안에 있는지 (Windows 경로는 대소문자·구분자를 가리지 않는다) */
+export function insideFolder(folder: string, base: string): boolean {
+  const norm = (p: string) => {
+    const s = p.replace(/\\/g, "/").replace(/\/+$/, "");
+    return /^[a-z]:/i.test(s) ? s.toLowerCase() : s;
+  };
+  const f = norm(folder);
+  const b = norm(base);
+  return f === b || f.startsWith(`${b}/`);
+}
+
+/** "Mate에게 자세히 묻기": 제안 내용을 대화로 보낼 글 */
+export function askAboutText(item: InboxView): string {
+  const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
+  return [
+    `이 제안을 자세히 설명해 줘: 무엇이 문제인지, 원인으로 짐작되는 것, 그냥 두면 어떻게 되는지, 내가 확인하거나 할 일을 순서대로.`,
+    "",
+    `제목: ${item.title}`,
+    cut(item.summary, 1200),
+    ...(item.detail ? ["", "자세한 내용:", cut(item.detail, 2000)] : []),
+    ...(item.followUp ? ["", `맡길 일: ${cut(item.followUp.prompt, 600)}`] : []),
+  ].join("\n");
+}

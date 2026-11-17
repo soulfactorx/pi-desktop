@@ -98,7 +98,7 @@ export async function instruct(ctx: CommandContext, kind: "ask" | "fix", folder:
     ctx.now(),
   );
   await ctx.track(duty.id, ctx.source);
-  const how = duty.profile === "act" ? "별도 작업 공간에서 고치고, 적용은 다시 물을게요" : "읽기만 하며 살펴보고 결과를 알려 드릴게요";
+  const how = duty.profile === "act" ? "별도 작업 공간에서 고치고(git 저장소가 아니면 폴더 복사본에서), 적용은 다시 물을게요" : "읽기만 하며 살펴보고 결과를 알려 드릴게요";
   return `📝 ${folderAlias(folder)}에서 할게요: ${prompt}\n${how}.`;
 }
 

@@ -47,10 +47,31 @@ describe("act 작업 공간", () => {
     expect(existsSync(ws.worktree)).toBe(false);
   });
 
-  it("git 저장소가 아니면 이유를 알린다", async () => {
+  it("git 저장소가 아니면 복사본에서 고치고(의존성 폴더는 빼고), 원래 폴더에 적용한 뒤 복사본만 지운다", async () => {
     const plain = join(base, "plain");
-    await mkdir(plain);
-    await expect(prepareWorkspace(execCommand, plain, worktrees, "r0")).rejects.toThrow(/git 저장소에서만/);
+    await mkdir(join(plain, "node_modules", "x"), { recursive: true });
+    await writeFile(join(plain, "Dockerfile"), "FROM node:20\n");
+    await writeFile(join(plain, "node_modules", "x", "i.js"), "x\n");
+    const ws = await prepareWorkspace(execCommand, plain, worktrees, "r0");
+    expect(ws.copy).toBe(true);
+    expect(ws.repo).toBe(plain);
+    expect(isInside(ws.worktree, worktrees)).toBe(true);
+    expect(existsSync(join(ws.cwd, "node_modules"))).toBe(false);
+    await writeFile(join(ws.cwd, "Dockerfile"), "FROM node:22\n");
+    await writeFile(join(ws.cwd, ".dockerignore"), "node_modules\n");
+    const change = await collectChange(execCommand, ws);
+    expect(change?.info.copy).toBe(true);
+    expect(change?.info.files.sort()).toEqual([".dockerignore", "Dockerfile"]);
+    // 원래 폴더는 적용 전까지 그대로이고 .git을 만들지 않는다
+    expect(await readFile(join(plain, "Dockerfile"), "utf8")).toBe("FROM node:20\n");
+    await applyChange(execCommand, change!.info, join(base, "p.patch"));
+    expect(await readFile(join(plain, "Dockerfile"), "utf8")).toBe("FROM node:22\n");
+    expect(await readFile(join(plain, ".dockerignore"), "utf8")).toBe("node_modules\n");
+    expect(existsSync(join(plain, ".git"))).toBe(false);
+    expect(existsSync(join(plain, "node_modules", "x", "i.js"))).toBe(true);
+    await removeWorkspace(execCommand, ws.repo, ws.worktree, true);
+    expect(existsSync(ws.worktree)).toBe(false);
+    expect(existsSync(plain)).toBe(true);
   });
 
   it("고친 내용(새 파일 포함)을 모아 사용자 폴더에 커밋하지 않은 변경으로 적용한다", async () => {

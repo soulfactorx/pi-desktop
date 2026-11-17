@@ -81,7 +81,7 @@ export default function mateChatExtension(pi: ExtensionAPI): void {
           ),
           duty: Type.Optional(Type.String({ description: "run_duty·update_duty·delete_duty: 임무 id 또는 이름" })),
           folder: Type.Optional(
-            Type.String({ description: "ask·fix·create_duty·update_duty: 폴더 이름(마지막 폴더명) 또는 경로. create_duty에서 폴더와 상관없는 일(날씨·뉴스 등)이면 비운다. update_duty는 바꿀 때만" }),
+            Type.String({ description: "ask·fix·create_duty·update_duty·delegate: 폴더 이름(마지막 폴더명) 또는 경로. delegate는 제안이 고칠 폴더를 모를 때(\"맡길 폴더를 골라 주세요\") 사용자가 말한 폴더. create_duty에서 폴더와 상관없는 일(날씨·뉴스 등)이면 비운다. update_duty는 바꿀 때만" }),
           ),
           prompt: Type.Optional(Type.String({ description: "ask·fix·create_duty: 구체적인 지시. update_duty: 바꾼 뒤의 지시 전체 (바꿀 때만)" })),
           item: Type.Optional(Type.String({ description: "accept·dismiss·delegate: 인박스 항목 id" })),

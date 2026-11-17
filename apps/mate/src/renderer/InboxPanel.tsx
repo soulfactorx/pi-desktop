@@ -3,7 +3,8 @@ import { MarkdownText } from "./MarkdownText";
 import { TOPIC_LABELS, type InsightTopic } from "@pi-desktop/mate-runner/activity-types";
 import type { InboxView, Overview } from "../shared/api";
 import type { Act } from "./App";
-import { relativeTime, splitInbox } from "./mate-view";
+import { pickFolder } from "./folder-pick";
+import { askAboutText, insideFolder, relativeTime, splitInbox } from "./mate-view";
 
 const SEVERITY_LABELS: Record<InboxView["severity"], string> = { info: "참고", warn: "확인 필요", action: "할 일" };
 const STATUS_TEXT: Record<NonNullable<InboxView["status"]>, string> = { accepted: "확인함", dismissed: "버림", applied: "적용함" };
@@ -13,7 +14,7 @@ const STATUS_TEXT: Record<NonNullable<InboxView["status"]>, string> = { accepted
  * 앱이 꺼져 있던 동안 쌓인 것도 여기서 본다. 제안의 "확인함"은 표시만 하고,
  * 고치기(act) 변경은 "적용"을 눌러야 내 작업 폴더에 들어온다 (승인 대기).
  */
-export function InboxPanel({ overview, now, act }: { overview: Overview; now: number; act: Act }) {
+export function InboxPanel({ overview, now, act, onAsk }: { overview: Overview; now: number; act: Act; onAsk?: () => void }) {
   const [showHandled, setShowHandled] = useState(false);
   const { fresh, handled } = splitInbox(overview.inbox);
   const list = showHandled ? handled : fresh;
@@ -47,14 +48,29 @@ export function InboxPanel({ overview, now, act }: { overview: Overview; now: nu
       )}
       <ul className="cards">
         {list.map((item) => (
-          <InboxCard key={item.id} item={item} now={now} act={act} />
+          <InboxCard key={item.id} item={item} now={now} act={act} onAsk={onAsk} />
         ))}
       </ul>
     </section>
   );
 }
 
-export function InboxCard({ item, now, act }: { item: InboxView; now: number; act: Act }) {
+/**
+ * 제안의 맡길 일을 실행한다. 제안이 Mate 홈(시스템 관찰 등)에서 만들어져 고칠 폴더를 모르면 먼저 폴더를 고르게 한다.
+ * git 저장소가 아닌 폴더도 실행기가 복사본에서 고친다.
+ */
+async function delegateItem(item: InboxView): Promise<void> {
+  const host = await window.mate.currentHost();
+  let folder: string | undefined;
+  if (item.followUp && host.home && insideFolder(item.followUp.cwd, host.home)) {
+    alert("이 제안은 고칠 프로젝트 폴더를 모릅니다. 고칠 폴더를 골라 주세요.");
+    folder = await pickFolder();
+    if (!folder) return;
+  }
+  await window.mate.delegate(item.id, folder);
+}
+
+export function InboxCard({ item, now, act, onAsk }: { item: InboxView; now: number; act: Act; onAsk?: () => void }) {
   const [open, setOpen] = useState(false);
   /** 설치 제안이면 적용하기 전에 무엇이 들어가는지 보인다 (스킬 내용, 서버 명령, 복사할 원본) */
   const [preview, setPreview] = useState<string>();
@@ -77,7 +93,7 @@ export function InboxCard({ item, now, act }: { item: InboxView; now: number; ac
       {item.detail && (
         <>
           <button className="link" onClick={() => setOpen(!open)}>
-            {open ? "근거 접기" : "근거 보기"}
+            {open ? "자세히 접기" : "자세히 보기"}
           </button>
           {open && (
             <div className="detail markdown">
@@ -141,7 +157,7 @@ export function InboxCard({ item, now, act }: { item: InboxView; now: number; ac
               <button
                 className="primary small"
                 title={item.followUp.prompt}
-                onClick={() => void act(() => window.mate.delegate(item.id))}
+                onClick={() => void act(() => delegateItem(item))}
               >
                 Mate에게 맡기기
               </button>
@@ -151,6 +167,16 @@ export function InboxCard({ item, now, act }: { item: InboxView; now: number; ac
             </button>
             <button className="small" onClick={() => void act(() => window.mate.setInbox([item.id], "dismissed"))}>
               버리기
+            </button>
+            <button
+              className="small"
+              title="이 제안을 대화로 보내 원인·영향·해결 방법을 자세히 묻습니다"
+              onClick={() => void act(async () => {
+                await window.mate.chatSend(askAboutText(item));
+                onAsk?.();
+              })}
+            >
+              Mate에게 자세히 묻기
             </button>
             {item.followUp && <span className="muted small-text">맡기면 별도 작업 공간에서 고치고, 적용은 다시 묻습니다</span>}
             {item.topic && !item.followUp && <span className="muted small-text">버린 주제는 Mate가 덜 알립니다</span>}

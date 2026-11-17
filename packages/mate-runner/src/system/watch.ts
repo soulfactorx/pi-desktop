@@ -10,7 +10,7 @@ import { mateDefault, mateTunables } from "../tunables";
 import type { Duty, MateConfig, RunnerState } from "../types";
 import type { Exec } from "../watchers";
 import { piHabits, shellHabits, whenPhrase } from "./habits";
-import { commandShape, scrubText } from "./privacy";
+import { commandShape, scrubLines, scrubText } from "./privacy";
 import { historyFiles, parseHistory, readApps, readDisks, readHealth, readTail, systemPlatform, type Platform, type RawEvent } from "./sources";
 import { type EventSummary, type HabitCandidate, type SystemObserveConfig, type SystemView, type SystemWatchState } from "./types";
 
@@ -179,7 +179,10 @@ export class SystemWatch {
       const week = st.events.filter((e) => e.lastAt >= now - 7 * DAY).sort((a, b) => total(b) - total(a)).slice(0, 12);
       lines.push("", "오류 로그 (최근 7일, 많은 것부터):");
       if (week.length === 0) lines.push("- 없음");
-      for (const e of week) lines.push(`- ${e.source} #${e.id} (${e.level === "critical" ? "위험" : "오류"}) ${total(e)}회, 마지막 ${ago(e.lastAt, now)}: ${e.message || "(내용 없음)"}`);
+      for (const e of week) {
+        lines.push(`- ${e.source} #${e.id} (${e.level === "critical" ? "위험" : "오류"}) ${total(e)}회, 마지막 ${ago(e.lastAt, now)}: ${e.message || "(내용 없음)"}`);
+        if (e.detail) lines.push(`  자세히: ${e.detail.replace(/\s*\n\s*/g, " / ").slice(0, 400)}`);
+      }
       if (st.failed.length) lines.push("실패해 있는 것:", ...st.failed.map((f) => `- ${unitLabel(f.kind)} ${f.name} (${ago(f.since, now)}부터)`));
       if (st.disks.length) lines.push("디스크:", ...st.disks.map((d) => `- ${d.mount} ${usedPercent(d)}% 사용, 남은 ${gb(d.free)}`));
       hasContent ||= week.length > 0 || st.failed.length > 0 || st.disks.some((d) => usedPercent(d) >= 80);
@@ -258,15 +261,20 @@ export class SystemWatch {
       const key = `${raw.source}#${raw.id}`;
       const day = localDateKey(raw.at);
       const message = scrubText(raw.message, this.home, this.user);
+      const detail = raw.detail ? scrubLines(raw.detail, this.home, this.user) : undefined;
       const found = st.events.find((e) => e.key === key);
       if (found) {
         found.days[day] = (found.days[day] ?? 0) + 1;
         // 가장 최근 것의 내용을 보인다
-        if (message && raw.at >= found.lastAt) found.message = message;
+        if (message && raw.at >= found.lastAt) {
+          found.message = message;
+          if (detail) found.detail = detail;
+          else delete found.detail;
+        }
         found.lastAt = Math.max(found.lastAt, raw.at);
         if (raw.level === "critical") found.level = "critical";
       } else {
-        st.events.push({ key, source: scrubText(raw.source, this.home, this.user, 60), id: raw.id, level: raw.level, message, days: { [day]: 1 }, firstAt: raw.at, lastAt: raw.at });
+        st.events.push({ key, source: scrubText(raw.source, this.home, this.user, 60), id: raw.id, level: raw.level, message, ...(detail ? { detail } : {}), days: { [day]: 1 }, firstAt: raw.at, lastAt: raw.at });
       }
     }
     // 지금 실패해 있는 것만 남긴다 (언제부터인지는 이어 간다)
@@ -358,10 +366,10 @@ export class SystemWatch {
     const feedback = await topicFeedback(this.paths);
     const healthMuted = isTopicMuted(feedback[SYSTEM_TOPICS.health]);
     const recently = (key: string, days: number) => st.suggested[key] !== undefined && now - st.suggested[key]! < days * DAY;
-    const propose = async (key: string, days: number, title: string, summary: string, severity: "info" | "warn") => {
+    const propose = async (key: string, days: number, title: string, summary: string, severity: "info" | "warn", detail?: string) => {
       if (healthMuted || recently(key, days) || st.today.count >= limit) return;
       st.suggested[key] = now;
-      const item = makeProposal({ title, summary, severity, topic: SYSTEM_TOPICS.health }, { dutyId: OBSERVER_DUTY_ID, runId: `system-${now}` }, now);
+      const item = makeProposal({ title, summary, severity, topic: SYSTEM_TOPICS.health, ...(detail ? { detail } : {}) }, { dutyId: OBSERVER_DUTY_ID, runId: `system-${now}` }, now);
       if (await appendProposal(this.paths.inbox, item)) st.today.count += 1;
     };
 
@@ -382,6 +390,7 @@ export class SystemWatch {
           note ? `${note}: ${e.source}` : `${e.source}에서 오류가 되풀이됩니다 (오늘 ${today}회)`,
           `${e.message || "(내용 없음)"}\n최근 7일 ${total(e)}회, 마지막 ${ago(e.lastAt, now)}.\n확인: ${where}`,
           e.level === "critical" || note ? "warn" : "info",
+          eventDetail(e, where, now),
         );
       }
       for (const f of st.failed) {
@@ -515,6 +524,28 @@ function topApps(day: Record<string, number>, n: number): Array<{ name: string; 
     .map(([name, minutes]) => ({ name, minutes }))
     .sort((a, b) => b.minutes - a.minutes)
     .slice(0, n);
+}
+
+/** 오류 제안의 "자세히 보기": 가린 전체 메시지, 날짜별 횟수, 처음·마지막, 확인할 곳 */
+export function eventDetail(e: EventSummary, where: string, now: number): string {
+  const days = Object.entries(e.days)
+    .sort(([a], [b]) => (a < b ? 1 : -1))
+    .slice(0, 7)
+    .map(([d, n]) => `${d} ${n}회`)
+    .join(", ");
+  return [
+    `**${e.source}** · ${/^\d+$/.test(e.id) ? `이벤트 ID ${e.id}` : e.id} · ${e.level === "critical" ? "위험" : "오류"}`,
+    "",
+    "```",
+    e.detail || e.message || "(내용 없음)",
+    "```",
+    "",
+    `- 날짜별: ${days}`,
+    `- 처음 본 때: ${ago(e.firstAt, now)}, 마지막: ${ago(e.lastAt, now)}`,
+    `- 확인할 곳: ${where}`,
+    "",
+    "경로·사용자 이름·주소·비밀값은 가렸습니다. 원인·해결 방법은 \"Mate에게 자세히 묻기\"로 물어볼 수 있습니다.",
+  ].join("\n");
 }
 
 function total(e: EventSummary): number {
