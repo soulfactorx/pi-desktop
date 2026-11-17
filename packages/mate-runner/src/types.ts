@@ -1,3 +1,4 @@
+import { DEFAULT_SYSTEM_OBSERVE, type SystemObserveConfig, type SystemWatchState } from "./system/types";
 import type { MateProfile } from "@pi-desktop/mate-kit/shared";
 import type { ObserverState } from "./activity-types";
 
@@ -52,6 +53,8 @@ export interface Duty {
   skills?: string[];
   /** 이 임무가 쓸 MCP 서버 이름 (Mate 홈 mcp.json). 없거나 비면 MCP를 쓰지 않는다. 도구는 처음 쓸 때 허용을 묻는다 */
   mcpServers?: string[];
+  /** 이 실행에서 쓸 도구를 이것으로 좁힌다 (권한 단계의 도구 중에서만. 시스템 관찰자처럼 Mate 내부 실행용) */
+  tools?: string[];
   createdAt: number;
   updatedAt?: number;
 }
@@ -118,6 +121,8 @@ export interface ObserveConfig {
   dailySuggestionLimit: number;
   /** 관찰하지 않을 폴더 (이 안의 세션·저장소는 보지 않음) */
   excluded: string[];
+  /** 시스템 관찰 (§10.1): 오류 로그·되풀이 작업·프로그램. 활동 관찰과 따로 켠다 */
+  system: SystemObserveConfig;
 }
 
 export const DEFAULT_CONFIG: MateConfig = {
@@ -125,7 +130,7 @@ export const DEFAULT_CONFIG: MateConfig = {
   paused: false,
   dailyRunLimit: 20,
   maxCostUsd: 0.5,
-  observe: { enabled: false, quietMinutes: 5, dailySuggestionLimit: 5, excluded: [] },
+  observe: { enabled: false, quietMinutes: 5, dailySuggestionLimit: 5, excluded: [], system: DEFAULT_SYSTEM_OBSERVE },
   telegram: { enabled: false, pairEpoch: 0, notify: "action", sendDetail: true, allowFix: false, mirrorApp: false },
   chatMcpServers: [],
   chatGrants: [],
@@ -205,6 +210,8 @@ export interface RunnerState {
   current?: { runId: string; dutyId: string; startedAt: number };
   /** 활동 관찰 (M4) */
   observer?: ObserverState;
+  /** 시스템 관찰 (§10.1) */
+  system?: SystemWatchState;
 }
 
 /** "지금 실행" 요청 (requests/<시각>-<id>.json) */

@@ -1173,3 +1173,27 @@ code.copy {
 .composer-box textarea {
   flex: none;
 }
+
+/* 시스템 관찰 (활동 탭) */
+.system-observe {
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.system-observe h3 {
+  margin: 12px 0 4px;
+  font-size: 14px;
+}
+
+.system-digest {
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2, transparent);
+}

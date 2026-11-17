@@ -10,7 +10,8 @@
     "./types": "./src/types.ts",
     "./view-types": "./src/view-types.ts",
     "./pi-readiness": "./src/pi-readiness-types.ts",
-    "./activity-types": "./src/activity-types.ts"
+    "./activity-types": "./src/activity-types.ts",
+    "./system-types": "./src/system/types.ts"
   },
   "scripts": {
     "build": "node scripts/build.mjs",

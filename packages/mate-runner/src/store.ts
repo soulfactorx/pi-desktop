@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { normalizeSystemObserve } from "./system/config";
 import { appendFile, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isGrant, isProfile, isToolGrant } from "@pi-desktop/mate-kit";
@@ -117,6 +118,7 @@ function normalizeObserve(raw: unknown): MateConfig["observe"] {
     quietMinutes: int(o.quietMinutes, d.quietMinutes, 1, 120),
     dailySuggestionLimit: int(o.dailySuggestionLimit, d.dailySuggestionLimit, 0, 50),
     excluded: Array.isArray(o.excluded) ? o.excluded.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()) : [],
+    system: normalizeSystemObserve(o.system),
   };
 }
 

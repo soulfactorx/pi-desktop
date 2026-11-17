@@ -96,6 +96,7 @@ async function daemon(): Promise<void> {
       locatePi: findPi,
       shutdown: () => void shutdown(),
       setTelegramToken: (token) => runner.setTelegramToken(token),
+      clearSystem: () => runner.clearSystem(),
     }),
     (message) => void log(paths, message),
   );

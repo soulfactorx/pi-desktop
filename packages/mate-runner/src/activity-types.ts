@@ -52,7 +52,16 @@ export interface ProjectSnapshot {
 }
 
 /** 제안 후보의 주제. 사용자가 버린 주제는 덜 알린다 */
-export type InsightTopic = "untested-edit" | "repeated-failure" | "unpushed" | "uncommitted" | "session-error";
+export type InsightTopic =
+  | "untested-edit"
+  | "repeated-failure"
+  | "unpushed"
+  | "uncommitted"
+  | "session-error"
+  /** 시스템 관찰 (§10.1) */
+  | "system-health"
+  | "system-habit"
+  | "system-digest";
 
 export interface Candidate {
   topic: InsightTopic;
@@ -93,4 +102,7 @@ export const TOPIC_LABELS: Record<InsightTopic, string> = {
   unpushed: "push 안 한 커밋",
   uncommitted: "오래 커밋 안 한 변경",
   "session-error": "오류로 끝난 세션",
+  "system-health": "시스템 오류·디스크",
+  "system-habit": "되풀이하는 작업",
+  "system-digest": "시스템 관찰 분석",
 };

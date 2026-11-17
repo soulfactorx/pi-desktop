@@ -11,6 +11,8 @@ import type { PiLaunch } from "./executor";
 import { applyInboxChange, discardInboxChange } from "./inbox-change";
 import { applyInstall, describeInstall } from "./install";
 import { OBSERVER_DUTY_ID, OBSERVER_NAME, readActivity, topicFeedback } from "./observer";
+import { emptySystemState, SystemWatch } from "./system/watch";
+import { execCommand } from "./watchers";
 import type { MatePaths } from "./paths";
 import { piReadiness } from "./pi-readiness";
 import { loadRemoteState } from "./remote/telegram-remote";
@@ -36,6 +38,7 @@ import {
   pendingRequests,
   saveConfig,
   saveDuty,
+  saveState,
   setInboxStatus,
   type ConfigPatch,
 } from "./store";
@@ -61,6 +64,8 @@ export interface MateAppContext {
   shutdown?: () => void;
   /** 휴대폰 연결 토큰을 메모리에 두고 연결을 켠다 (빈 값이면 끈다). 원격 호스트의 휴대폰 연결 (DESIGN-MATE-REMOTE.md §5) */
   setTelegramToken?: (token: string | undefined) => void;
+  /** 시스템 관찰이 모은 기록을 지운다 (실행기 메모리의 상태까지). 없으면 상태 파일만 고친다 */
+  clearSystem?: () => Promise<void>;
 }
 
 // 메서드마다 인자 모양이 달라 any로 받는다 (실행기는 이름으로만 찾는다)
@@ -77,6 +82,9 @@ export function mateAppApi(ctx: MateAppContext): MateAppApi {
       return { command: pi.nodePath ?? process.execPath, args: [pi.cliPath], env: { ...process.env, ...pi.env } };
     },
   });
+
+  // 시스템 관찰 화면·요약 미리 보기 (상태는 실행기가 모은 것을 읽기만 한다)
+  const system = new SystemWatch(paths, execCommand);
 
   async function overview(): Promise<Overview> {
     const [config, duties, state, requests, items, inboxState, runs, runner, trash] = await Promise.all([
@@ -128,6 +136,7 @@ export function mateAppApi(ctx: MateAppContext): MateAppApi {
         feedback,
         ...(state.observer ? { since: state.observer.since } : {}),
       },
+      system: await system.view(state, config, now),
       trash,
     };
   }
@@ -135,6 +144,18 @@ export function mateAppApi(ctx: MateAppContext): MateAppApi {
   return {
     overview,
     config: () => loadConfig(paths),
+    /** 시스템 관찰: 분석을 켜면 모델에게 보낼 요약 (지금 모인 것으로 만든다) */
+    systemDigest: async () => {
+      const [state, config] = await Promise.all([loadState(paths), loadConfig(paths)]);
+      return state.system ? (await system.digest(state.system, config, Date.now())).text : "";
+    },
+    /** 시스템 관찰이 모은 기록을 모두 지운다 (설정은 그대로) */
+    systemClear: async () => {
+      if (ctx.clearSystem) return ctx.clearSystem();
+      const state = await loadState(paths);
+      if (state.system) state.system = { ...emptySystemState(Date.now()), history: state.system.history, ...(state.system.healthCursor ? { healthCursor: state.system.healthCursor } : {}) };
+      await saveState(paths, state);
+    },
     saveConfig: (patch: ConfigPatch) => saveConfig(paths, patch),
     // 설정으로 꺼낸 프롬프트와 수치 (DESIGN-APPS.md §7). 실행기는 파일이 바뀌면 다음 사용부터 새 값을 읽는다
     // 툴 설명문(tool.*)도 함께 보인다. mate-kit 확장이 툴을 등록할 때 Mate 홈에 적어 둔 기본값으로 항목을 만든다

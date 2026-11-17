@@ -1,3 +1,4 @@
+import type { SystemView } from "./system/types";
 import type { ChatLine, InboxItem } from "@pi-desktop/mate-kit/shared";
 import type { ActivityRecord, ProjectSnapshot } from "./activity-types";
 import type { Duty, InboxStatus, MateConfig, MateTrashItem, RunnerState, RunRecord, RunStatus } from "./types";
@@ -61,6 +62,8 @@ export interface Overview {
   runs: RunRecord[];
   runner: RunnerView;
   observe: ObserveView;
+  /** 시스템 관찰 (§10.1) */
+  system: SystemView;
   /** 휴지통 (지운 임무·실행 기록·대화, 최근 것부터) */
   trash: MateTrashItem[];
 }

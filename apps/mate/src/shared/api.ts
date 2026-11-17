@@ -63,6 +63,8 @@ export const IpcChannels = {
   deleteDuty: "mate:delete-duty",
   deleteRun: "mate:delete-run",
   clearChat: "mate:clear-chat",
+  systemDigest: "mate:system-digest",
+  systemClear: "mate:system-clear",
   restoreTrash: "mate:restore-trash",
   emptyTrash: "mate:empty-trash",
   runNow: "mate:run-now",
@@ -161,6 +163,10 @@ export interface MateApi {
   deleteRun(id: string): Promise<void>;
   /** 대화 기록을 휴지통으로 옮긴다 (다음 말부터 새 대화). 지울 것이 없었으면 false */
   clearChat(): Promise<boolean>;
+  /** 시스템 관찰: 분석을 켜면 모델에게 보낼 요약 (미리 보기) */
+  systemDigest(): Promise<string>;
+  /** 시스템 관찰이 모은 기록을 모두 지운다 */
+  systemClear(): Promise<void>;
   /** 휴지통 항목을 원래 자리로 되살린다 */
   restoreTrash(id: string): Promise<void>;
   /** 휴지통을 비운다 (ids가 없으면 전부). 정말 지운 항목 수 */
