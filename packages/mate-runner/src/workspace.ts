@@ -53,6 +53,8 @@ async function copyWorkspace(exec: Exec, dutyCwd: string, worktreesDir: string, 
   const copy = join(worktreesDir, runId);
   await cp(source, copy, { recursive: true, verbatimSymlinks: true, filter: (src) => src === source || !COPY_SKIP.has(basename(src)) });
   await git(exec, copy, "init", "-q");
+  // 줄 끝을 바꾸지 않는다 (Windows의 core.autocrlf가 사용자 파일의 줄 끝을 바꾸지 않게)
+  await git(exec, copy, "config", "core.autocrlf", "false");
   await git(exec, copy, "add", "-A");
   await git(exec, copy, "-c", "user.name=Mate", "-c", "user.email=mate@localhost", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "--no-verify", "-m", "Mate 작업 공간 기준");
   const base = await git(exec, copy, "rev-parse", "HEAD");
@@ -102,11 +104,13 @@ export async function applyChange(exec: Exec, change: ChangeInfo, patchFile: str
   // 바이너리 포함 전체 diff를 파일로 받아 사용자 저장소에 적용한다. 먼저 --check로 깨끗이 들어가는지 본다
   const diff = await exec("git", ["diff", "--cached", "--binary", `--output=${patchFile}`, change.base], change.worktree);
   if (diff.code !== 0) throw new Error("작업 공간의 변경을 읽지 못했습니다");
-  const check = await exec("git", ["apply", "--check", "--whitespace=nowarn", patchFile], change.repo);
+  // 복사본(저장소가 아닌 폴더)은 patch처럼 그대로 넣는다: 전역 core.autocrlf가 줄 끝을 바꾸지 않게
+  const eol = change.copy ? ["-c", "core.autocrlf=false"] : [];
+  const check = await exec("git", [...eol, "apply", "--check", "--whitespace=nowarn", patchFile], change.repo);
   if (check.code !== 0) {
     throw new Error(`내 작업 폴더가 그사이 바뀌어 그대로 적용할 수 없습니다. 작업 공간(${change.worktree})에서 직접 확인해 주세요`);
   }
-  await git(exec, change.repo, "apply", "--whitespace=nowarn", patchFile);
+  await git(exec, change.repo, ...eol, "apply", "--whitespace=nowarn", patchFile);
 }
 
 /** 작업 공간을 지운다. git이 만든 worktree라 git으로 지우고, 기록이 남지 않게 prune한다. 복사본은 그 폴더만 지운다 */
