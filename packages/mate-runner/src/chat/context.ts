@@ -6,6 +6,7 @@ import { packageWebTools, webSearchOn } from "./web-search";
 import { freshItems, isOneOff, knownFolders, recentRunsText } from "./commands";
 import { listDuties, loadConfig, loadState, readDutyLog, type DutyLogEntry } from "../store";
 import { mateTunables } from "../tunables";
+import { settingsSection } from "./settings";
 
 /** 대화 한 차례의 시스템 안내: 거의 바뀌지 않는 규칙과, Mate 상태를 나눈 섹션들 */
 export interface ChatPromptParts {
@@ -62,7 +63,7 @@ export async function chatPromptParts(paths: MatePaths, now: number): Promise<Ch
       .filter((d) => !isOneOff(d))
       .map(
         (d) =>
-          `- ${d.id} "${clip(d.name, 60)}" (${schedulePhrase(d.trigger)}, ${d.profile}, 폴더 ${folderAlias(d.cwd)}${d.enabled ? "" : ", 꺼짐"}${d.grants?.length ? `, 허용 ${d.grants.join(" ")}` : ""}${d.mcpServers?.length ? `, MCP ${d.mcpServers.join(" ")}` : ""}${d.updatedAt ? `, 마지막으로 고침 ${new Date(d.updatedAt).toLocaleString("ko-KR")}` : ""}) 지시: ${clip(d.prompt, 600)}`,
+          `- ${d.id} "${clip(d.name, 60)}" (${schedulePhrase(d.trigger)}, ${d.profile}, 폴더 ${folderAlias(d.cwd)}${d.enabled ? "" : ", 꺼짐"}${d.grants?.length ? `, 허용 ${d.grants.join(" ")}` : ""}${d.mcpServers?.length ? `, MCP ${d.mcpServers.join(" ")}` : ""}${d.updatedAt ? `, 마지막으로 고침 ${new Date(d.updatedAt).toLocaleString("ko-KR")}` : ""}, 시간 제한 ${d.timeoutSec ?? mateTunables(paths.home).num("duty.defaultTimeoutSec")}초${d.model ? `, 모델 ${d.model}` : ""}${d.maxCostUsd ? `, 비용 상한 $${d.maxCostUsd}` : ""}) 지시: ${clip(d.prompt, 600)}`,
       ),
   ]);
   if (folders.length) put("mate_folders", ["아는 폴더 (이름 — 경로):", ...folders.map((f) => `- ${folderAlias(f)} — ${f}`)]);
@@ -91,7 +92,9 @@ export async function chatPromptParts(paths: MatePaths, now: number): Promise<Ch
     "- runs/<실행 id>.json: 실행 결과 전체(summary)·쓴 도구 수(tools)·빠진 패키지(missingPackages)·세션 파일(sessionFile)",
     "- sessions/*.jsonl: 실행 세션 (도구 호출과 결과까지. 크니 grep으로 찾는다)",
     "- duties/<임무 id>.json: 임무 설정 · duty-log.jsonl: 임무 변경 기록 · inbox.jsonl: 제안",
+    `- mate-guide.md: Mate 기능 안내 (대화로 바꿀 수 있는 임무 항목·앱 설정·수치/프롬프트 설정 목록과 지금 값, 대화로 못 하는 것). 설정을 바꿔 달라는데 이름을 모르면 먼저 읽는다`,
   ]);
+  put("mate_settings", settingsSection(config));
   if (state.observer?.recent.length) {
     put("mate_observed", ["최근 관찰한 Pi 작업:", ...state.observer.recent.slice(0, 5).map((s) => `- ${folderAlias(s.cwd)}: ${clip(s.firstPrompt ?? "", 120)}`)]);
   }
