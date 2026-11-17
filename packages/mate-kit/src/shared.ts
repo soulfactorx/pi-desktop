@@ -57,6 +57,9 @@ export function isToolGrant(name: string): boolean {
 /** 막힌 명령의 허용을 묻는 질문의 선택지. 첫째가 허용이다 */
 export const PERMISSION_OPTIONS = ["허용하고 다시 실행", "허용하지 않음"] as const;
 
+/** 대화가 맡긴 변경을 확인하는 질문의 선택지 */
+export const CONFIRM_OPTIONS = ["바꾸기", "그만"] as const;
+
 /** mate-guard가 막힌 명령마다 남기는 한 줄 */
 export interface BlockedCommand {
   /** 허용을 물을 명령 이름 (예: curl) 또는 MCP 도구 이름 (mcp__<서버>__<도구>) */
@@ -142,6 +145,8 @@ export interface ChatLine {
     /** 고를 것이 여럿이면 (예: 웹 검색을 어떤 방법으로 켤지) 선택지마다 허용할 것. 질문의 options가 label과 "허용하지 않음"이다 */
     choices?: Array<{ label: string; commands: string[]; mcpServers?: string[] }>;
   };
+  /** 대화가 맡긴 변경 중 사용자 확인이 필요한 것 (설정 상한 올리기·관찰 켜기·임무 지우기 등). 질문의 options가 [바꾸기, 그만]이다 */
+  confirm?: { action: Record<string, unknown>; reason: string };
   /** 사용자가 이 말과 함께 보낸 이미지 수 */
   images?: number;
   /** Mate 답이 이 차례에 쓴 토큰·비용 (모델을 부른 답만) */

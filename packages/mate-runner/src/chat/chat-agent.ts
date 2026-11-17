@@ -2,12 +2,13 @@ import { packageDirs, packageToolNames } from "@pi-desktop/pi-resources";
 import { watch, type FSWatcher } from "node:fs";
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
-import { appendChat, appendChatQuestion, extensionEntries, isToolGrant, PERMISSION_OPTIONS, readChat, readChatActions, readInbox, type ChatLine } from "@pi-desktop/mate-kit";
+import { appendChat, appendChatQuestion, CONFIRM_OPTIONS, extensionEntries, isToolGrant, PERMISSION_OPTIONS, readChat, readChatActions, readInbox, type ChatLine } from "@pi-desktop/mate-kit";
+import { applySetting, applyTunable, settingRisk, tunableRisk, writeGuide } from "./settings";
 import { delegateInboxItem } from "../delegate";
 import { isolationDirOf, runPi as defaultRunPi, type PiLaunch } from "../executor";
 import type { MatePaths } from "../paths";
 import { folderAlias, parseCommand } from "../remote/messages";
-import { addRequest, dutyIdFrom, listDuties, listRuns, loadConfig, readJson, saveConfig, saveDuty, setInboxStatus, writeJsonAtomic } from "../store";
+import { addRequest, deleteDuty, dutyIdFrom, listDuties, listRuns, loadConfig, readJson, saveConfig, saveDuty, setInboxStatus, writeJsonAtomic } from "../store";
 import { enableWebSearch, webChoices, webSearchOn, webSetup } from "./web-search";
 import { localDateKey } from "../schedule";
 import { CHAT_DUTY_ID, type Duty } from "../types";
@@ -219,6 +220,7 @@ export class ChatAgent {
     }
     const text = request.text.trim();
     if (request.answerTo && (await this.answerPermission(request))) return;
+    if (request.answerTo && (await this.answerConfirm(request))) return;
     // 허용 질문에 답하지 않고 다음 말을 했으면 그 질문은 닫는다 (답하지 않은 질문 배지가 계속 남지 않게)
     if (!request.answerTo) await this.expireQuestions(request.source);
     if (text.startsWith("/")) {
@@ -299,12 +301,50 @@ export class ChatAgent {
   }
 
   /**
+   * 대화가 맡긴 변경 중 확인이 필요했던 것(설정 상한 올리기·관찰 켜기·임무 지우기 등)에 답했으면 모델을 거치지 않고 처리한다.
+   * @returns 처리했으면 true. 확인 질문이 아니거나 예·아니요로 읽을 수 없는 답이면 false
+   */
+  private async answerConfirm(request: ChatRequest): Promise<boolean> {
+    const lines = await readChat(this.options.paths.chat);
+    const question = lines.find((l) => l.id === request.answerTo);
+    const confirm = question?.confirm;
+    if (!question || !confirm) return false;
+    if (lines.some((l) => l.kind === "expire" && l.answerTo === question.id)) {
+      await this.say(request.source, "지난 질문이라 바꾸지 않았어요. 필요하면 다시 말씀해 주세요.", "notice");
+      return true;
+    }
+    const text = request.text.trim();
+    const yes = text === CONFIRM_OPTIONS[0] || /^(예|네|응|바꿔|바꾸기|좋아|(yes|y|ok)(\s|$))/i.test(text);
+    const no = text === CONFIRM_OPTIONS[1] || /^(아니|아뇨|그만|취소|(no|n)(\s|$))/i.test(text);
+    if (!yes && !no) return false;
+    if (lines.filter((l) => l.answerTo === question.id && l.role === "user").length > 1) {
+      await this.say(request.source, "이미 답한 질문이에요.", "notice");
+      return true;
+    }
+    if (no) {
+      await this.say(request.source, "알겠어요. 바꾸지 않았어요.", "notice");
+      return true;
+    }
+    const note = await this.doAction(confirm.action, request.source, true).catch((error: Error) => `⚠️ ${error.message}`);
+    this.options.log(`chat confirm applied ${String(confirm.action.action)}`);
+    await this.say(request.source, note, "notice");
+    return true;
+  }
+
+  /** 확인이 필요한 변경: 바로 하지 않고 [바꾸기]/[그만]으로 묻는다 */
+  private async askConfirm(action: Record<string, unknown>, reason: string, what: string): Promise<string> {
+    const text = `${what}\n${reason}. 바꿀까요?`;
+    const asked = await appendChatQuestion(this.options.paths.chat, { text, options: [...CONFIRM_OPTIONS], dutyId: CHAT_DUTY_ID, confirm: { action, reason } }, this.now());
+    return asked ? `❓ ${what}: 위의 질문에서 바꿀지 골라 주세요.` : `❓ ${what}: 바꿀지 묻는 질문이 이미 있어요.`;
+  }
+
+  /**
    * 답하지 않은 허용 질문(permission)을 닫는다. 화면에 보이지 않는 expire 줄을 남겨 답한 것으로 친다.
    * 같은 것이 다시 막히면 그때 다시 묻는다 (appendChatQuestion은 답한 질문을 중복으로 보지 않는다).
    * mate_ask로 물은 일반 질문은 대화 흐름과 상관없으니 그대로 둔다.
    */
   private async expireQuestions(source: ChatSource): Promise<void> {
-    const open = openQuestions(await readChat(this.options.paths.chat)).filter((q) => q.permission);
+    const open = openQuestions(await readChat(this.options.paths.chat)).filter((q) => q.permission || q.confirm);
     for (const q of open) await this.append({ role: "mate", kind: "expire", text: "답하지 않고 넘어감", source, answerTo: q.id });
     if (open.length) this.options.log(`chat expired questions ${open.map((q) => q.id).join(",")}`);
   }
@@ -351,6 +391,8 @@ export class ChatAgent {
         this.options.locatePi(),
         extensionEntries(this.options.kitDir),
         chatPromptParts(paths, now),
+        // Mate 기능 안내 파일: 대화 모델이 무엇을 바꿀 수 있는지 필요할 때 읽는다 (바뀌었을 때만 다시 쓴다)
+        writeGuide(paths).catch(() => undefined),
       ]);
       // Mate 상태는 섹션으로 나눠 mate-chat 확장이 넣는다 (바뀐 섹션만 대화에 쌓여 프롬프트 캐시가 산다)
       const sectionsPath = join(paths.chatActions, `${now}.sections.json`);
@@ -386,8 +428,14 @@ export class ChatAgent {
       await rm(actionsPath, { force: true });
       await rm(sectionsPath, { force: true });
       const notes: string[] = [];
-      for (const action of actions.slice(0, 5)) {
+      for (const action of actions.slice(0, 8)) {
         notes.push(await this.doAction(action, request.source).catch((error: Error) => `⚠️ ${error.message}`));
+      }
+      // 고치기만 맡기고 실행은 맡기지 않았는데 사용자가 실행을 바랐으면, 실행하지 않았다고 분명히 알린다
+      const changedDuty = actions.some((a) => (a.action === "update_duty" || a.action === "create_duty") && a.run !== true);
+      const ran = actions.some((a) => a.action === "run_duty" || ((a.action === "update_duty" || a.action === "create_duty") && a.run === true));
+      if (changedDuty && !ran && /실행|처리|돌려|돌리|다시 해|해 ?봐/.test(request.text)) {
+        notes.push('ℹ️ 임무는 고쳤지만 실행은 아직 요청하지 않았어요. 바로 돌리려면 "실행해 줘"라고 말씀해 주세요.');
       }
       if (notes.length) await this.say(request.source, notes.join("\n"), "notice");
     } finally {
@@ -403,7 +451,7 @@ export class ChatAgent {
   }
 
   /** mate_do 한 줄을 처리하고 사용자에게 보일 한 줄을 돌려준다 */
-  async doAction(action: Record<string, unknown>, source: ChatSource): Promise<string> {
+  async doAction(action: Record<string, unknown>, source: ChatSource, confirmed = false): Promise<string> {
     const { paths } = this.options;
     const str = (key: string) => (typeof action[key] === "string" ? (action[key] as string).trim() : "");
     const allowFix = await this.allowFix(source);
@@ -487,6 +535,8 @@ export class ChatAgent {
         if (!trigger) return `⚠️ 실행 시점 "${str("schedule")}"을(를) 이해하지 못했어요.`;
         const name = str("name") || str("prompt").slice(0, 40);
         const profile = action.profile === "observe" || action.profile === "act" ? action.profile : "propose";
+        const timeout = action.timeout === undefined ? undefined : timeoutOf(action.timeout);
+        if (profile === "act" && !confirmed) return this.askConfirm(action, "고치기(act) 임무는 별도 작업 공간에서 파일을 고칩니다 (적용은 다시 승인)", `임무 "${name}"을(를) 고치기 방식으로 만들기`);
         const ids = (await listDuties(paths)).map((d) => d.id);
         const duty = await saveDuty(paths, {
           id: dutyIdFrom(name, ids),
@@ -498,11 +548,13 @@ export class ChatAgent {
           trigger,
           ...(setup?.mcpServers.length ? { mcpServers: setup.mcpServers } : {}),
           ...(webGrants.length ? { grants: webGrants } : {}),
+          ...(timeout !== undefined ? { timeoutSec: timeout } : {}),
           createdAt: this.now(),
         }, source === "telegram" ? "phone" : "chat");
         const where = str("folder") ? ` (${folderAlias(duty.cwd)})` : "";
         const webNote = web && webGrants.length === 0 ? " 처음 실행할 때 웹 검색을 허용할지 물어요." : "";
-        return `🗓 임무를 만들었어요: ${duty.name}${where}.${webNote} 임무 탭에서 고칠 수 있어요.`;
+        const runNote = action.run === true ? await this.runAfterChange(duty.id, duty.name, source) : "";
+        return `🗓 임무를 만들었어요: ${duty.name}${where}.${webNote} 임무 탭에서 고칠 수 있어요.${runNote}`;
       }
       case "update_duty": {
         // 있는 임무를 고친다: 새로 만들면 허용한 명령(grants)과 실행 기록을 잃으므로 고치기를 먼저 쓴다
@@ -536,6 +588,60 @@ export class ChatAgent {
           next.profile = action.profile;
           changed.push("방식");
         }
+        if (action.timeout !== undefined) {
+          const timeout = timeoutOf(action.timeout);
+          if (timeout !== duty.timeoutSec) {
+            next.timeoutSec = timeout;
+            changed.push(`시간 제한 ${duty.timeoutSec ?? mateTunables().num("duty.defaultTimeoutSec")}초→${timeout}초`);
+          }
+        }
+        if (typeof action.model === "string") {
+          const model = action.model.trim();
+          if (/^(default|기본)$/i.test(model) || model === "") {
+            if (duty.model) {
+              next.model = undefined;
+              changed.push("모델(Mate 기본으로)");
+            }
+          } else if (!/^[\w.-]+\/[\w.:-]+$/.test(model)) {
+            return `⚠️ 모델은 provider/id 모양이어야 해요 (${model}). "${duty.name}"을(를) 고치지 않았어요.`;
+          } else if (model !== duty.model) {
+            next.model = model;
+            changed.push(`모델 ${model}`);
+          }
+        }
+        let costRaised = false;
+        if (action.max_cost !== undefined) {
+          const cost = Number(action.max_cost);
+          if (!Number.isFinite(cost) || cost < 0 || cost > 20) return `⚠️ 비용 상한은 0~20달러로 알려 주세요. "${duty.name}"을(를) 고치지 않았어요.`;
+          const config = await loadConfig(paths);
+          const before = duty.maxCostUsd ?? config.maxCostUsd;
+          if (cost === 0 ? duty.maxCostUsd !== undefined : cost !== duty.maxCostUsd) {
+            next.maxCostUsd = cost === 0 ? undefined : cost;
+            const after = cost === 0 ? config.maxCostUsd : cost;
+            costRaised = after > before || (after === 0 && before > 0);
+            changed.push(`비용 상한 ${cost === 0 ? `$${config.maxCostUsd}(Mate 설정)` : `$${cost}`}`);
+          }
+        }
+        if (typeof action.enabled === "boolean" && action.enabled !== duty.enabled) {
+          next.enabled = action.enabled;
+          changed.push(action.enabled ? "켬" : "끔");
+        }
+        const removeGrants = Array.isArray(action.remove_grants) ? action.remove_grants.map(String) : [];
+        if (removeGrants.length && duty.grants?.some((g) => removeGrants.includes(g))) {
+          next.grants = duty.grants.filter((g) => !removeGrants.includes(g));
+          changed.push(`허용 빼기 ${removeGrants.join(", ")}`);
+        }
+        const removeMcp = Array.isArray(action.remove_mcp) ? action.remove_mcp.map(String) : [];
+        if (removeMcp.length && duty.mcpServers?.some((m) => removeMcp.includes(m))) {
+          next.mcpServers = duty.mcpServers.filter((m) => !removeMcp.includes(m));
+          changed.push(`MCP 빼기 ${removeMcp.join(", ")}`);
+        }
+        // 고치기 방식으로 바꾸기·비용 상한 올리기는 사용자에게 다시 묻는다
+        const risks = [
+          ...(next.profile === "act" && duty.profile !== "act" ? ["고치기(act) 방식은 별도 작업 공간에서 파일을 고칩니다 (적용은 다시 승인)"] : []),
+          ...(costRaised ? ["실행당 비용 상한을 올리면 한 번에 쓰는 비용이 늘 수 있습니다"] : []),
+        ];
+        if (risks.length && !confirmed) return this.askConfirm(action, risks.join(". "), `임무 "${duty.name}" 고치기 (${changed.join("·")})`);
         if (action.web === true) {
           const setup = await webSetup(paths);
           if (!setup) {
@@ -548,9 +654,33 @@ export class ChatAgent {
           if (grants.length) next.grants = grants;
           if (mcpServers.length !== (duty.mcpServers?.length ?? 0) || grants.length !== (duty.grants?.length ?? 0)) changed.push("인터넷");
         }
-        if (changed.length === 0) return `"${duty.name}"은(는) 바뀐 것이 없어요.`;
-        await saveDuty(paths, { ...next, updatedAt: this.now() }, source === "telegram" ? "phone" : "chat");
-        return `✏️ 임무를 고쳤어요: ${next.name} (${changed.join("·")}). 허용한 명령은 그대로예요.`;
+        if (changed.length > 0) await saveDuty(paths, { ...next, updatedAt: this.now() }, source === "telegram" ? "phone" : "chat");
+        const runNote = action.run === true ? await this.runAfterChange(duty.id, next.name, source) : "";
+        if (changed.length === 0) return `"${duty.name}"은(는) 바뀐 것이 없어요.${runNote}`;
+        return `✏️ 임무를 고쳤어요: ${next.name} (${changed.join("·")}).${runNote}`;
+      }
+      case "delete_duty": {
+        const duty = await findDuty(paths, str("duty"));
+        if (!duty) return `⚠️ 임무 "${str("duty")}"을(를) 찾지 못했어요.`;
+        if (!confirmed) return this.askConfirm({ ...action, duty: duty.id }, "지우면 휴지통으로 가고, 휴지통 탭에서 되살릴 수 있어요", `임무 "${duty.name}" 지우기`);
+        await deleteDuty(paths, duty.id, source === "telegram" ? "phone" : "chat");
+        return `🗑 임무를 지웠어요: ${duty.name} (휴지통에서 되살릴 수 있어요)`;
+      }
+      case "set_config": {
+        const setting = str("setting");
+        const value = action.value as string | number | boolean;
+        if (!setting || value === undefined || value === null) return "⚠️ 바꿀 설정 이름(setting)과 값(value)이 필요해요.";
+        const risk = settingRisk(setting, value, await loadConfig(paths));
+        if (risk && !confirmed) return this.askConfirm(action, risk, `설정 ${setting} → ${String(value)}`);
+        return applySetting(paths, setting, value);
+      }
+      case "set_tunable": {
+        const id = str("tunable");
+        if (!id) return "⚠️ 바꿀 설정 항목(tunable)이 필요해요.";
+        const value = action.value === undefined ? null : (action.value as string | number | boolean | null);
+        const risk = tunableRisk(id);
+        if (risk && !confirmed) return this.askConfirm(action, risk, `설정 항목 ${id} 바꾸기`);
+        return applyTunable(id, value === null ? null : typeof value === "boolean" ? String(value) : value);
       }
       case "pause":
       case "resume":
@@ -559,6 +689,13 @@ export class ChatAgent {
       default:
         return `⚠️ 모르는 할 일이에요: ${String(action.action)}`;
     }
+  }
+
+  /** 고치거나 만든 임무를 바로 실행한다 (update_duty·create_duty의 run) */
+  private async runAfterChange(dutyId: string, name: string, source: ChatSource): Promise<string> {
+    await addRequest(this.options.paths, dutyId, this.now());
+    await this.track(dutyId, source);
+    return ` ▶ ${name} 실행을 요청했어요.`;
   }
 
   /** 폴더와 상관없는 임무가 도는 곳 (Mate 홈의 workspace) */
@@ -611,4 +748,11 @@ export class ChatAgent {
     }
     if (changed) await this.save();
   }
+}
+
+/** 실행 시간 제한(초): 30~3600 */
+function timeoutOf(value: unknown): number {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n) || n < 30 || n > 3600) throw new Error(`시간 제한은 30~3600초로 알려 주세요 (${String(value)})`);
+  return n;
 }

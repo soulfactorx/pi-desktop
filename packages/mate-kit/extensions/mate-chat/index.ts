@@ -66,15 +66,20 @@ export default function mateChatExtension(pi: ExtensionAPI): void {
           "사용자가 원하는 일을 Mate 실행기에 맡긴다. 이 대화가 끝난 뒤 실행되고 결과는 대화로 알린다. " +
           "run_duty(임무 실행), ask(폴더를 읽기만 하며 살펴보기), fix(폴더를 별도 작업 공간에서 고치기 — 적용은 사용자가 다시 승인), " +
           "accept/dismiss(제안 확인함·버리기), delegate(제안의 맡길 일 실행), create_duty(임무 만들기), " +
-          "update_duty(있는 임무 고치기: 지시·이름·실행 시점·방식·인터넷. 허용한 명령은 그대로 둔다), pause/resume(자동 실행 멈춤·다시), " +
+          "update_duty(있는 임무 고치기: 지시·이름·실행 시점·폴더·방식·인터넷·시간 제한·모델·비용 상한·켜기/끄기·허용/MCP 빼기, run=true면 고친 뒤 바로 실행), " +
+          "delete_duty(임무 지우기, 휴지통으로), set_config(앱 설정 하나 바꾸기: setting·value), set_tunable(수치·프롬프트 설정 하나 바꾸기: tunable·value), " +
+          "pause/resume(자동 실행 멈춤·다시), " +
           "enable_web(웹 검색 켜기: 날씨·뉴스·검색처럼 인터넷이 필요한데 웹 검색이 꺼져 있을 때. 사용자가 버튼으로 허용하면 켜고 방금 요청에 다시 답한다). " +
-          "사용자가 분명히 원할 때만 쓰고, 애매하면 먼저 물어본다. " +
+          "사용자가 분명히 원할 때만 쓰고, 애매하면 먼저 물어본다. 바꾸고 실행·처리까지 바라면 run: true를 함께 넣는다. " +
+          "개인정보·비용·권한을 넓히는 변경은 실행기가 사용자에게 버튼으로 다시 묻는다. " +
           "이 도구는 일을 줄 세우기만 한다. 됐는지는 아직 모르니 '만들었어요·실행했어요'라고 하지 말고 '맡겼어요'라고 답한다.",
         parameters: Type.Object({
           action: Type.Union(
-            ["run_duty", "ask", "fix", "accept", "dismiss", "delegate", "create_duty", "update_duty", "pause", "resume", "enable_web"].map((a) => Type.Literal(a)),
+            ["run_duty", "ask", "fix", "accept", "dismiss", "delegate", "create_duty", "update_duty", "delete_duty", "set_config", "set_tunable", "pause", "resume", "enable_web"].map((a) =>
+              Type.Literal(a),
+            ),
           ),
-          duty: Type.Optional(Type.String({ description: "run_duty·update_duty: 임무 id 또는 이름" })),
+          duty: Type.Optional(Type.String({ description: "run_duty·update_duty·delete_duty: 임무 id 또는 이름" })),
           folder: Type.Optional(
             Type.String({ description: "ask·fix·create_duty·update_duty: 폴더 이름(마지막 폴더명) 또는 경로. create_duty에서 폴더와 상관없는 일(날씨·뉴스 등)이면 비운다. update_duty는 바꿀 때만" }),
           ),
@@ -90,6 +95,16 @@ export default function mateChatExtension(pi: ExtensionAPI): void {
           ),
           profile: Type.Optional(Type.Union([Type.Literal("observe"), Type.Literal("propose"), Type.Literal("act")], { description: "create_duty·update_duty: 보고·제안·고치기 (create_duty 기본 제안)" })),
           web: Type.Optional(Type.Boolean({ description: "create_duty·update_duty: 인터넷(웹 검색·페이지 읽기)이 필요한 임무면 true. 웹 검색이 꺼져 있으면 실행기가 켤지 먼저 묻고 그 할 일은 하지 않는다" })),
+          timeout: Type.Optional(Type.Number({ description: "create_duty·update_duty: 실행 시간 제한(초, 30~3600). 시간 초과로 멈춘 임무는 늘린다" })),
+          model: Type.Optional(Type.String({ description: "update_duty: 이 임무만 쓸 모델(provider/id). \"default\"면 Mate 기본 모델로" })),
+          max_cost: Type.Optional(Type.Number({ description: "update_duty: 이 임무의 실행당 비용 상한(USD, 0이면 Mate 설정을 따름)" })),
+          enabled: Type.Optional(Type.Boolean({ description: "update_duty: 임무 켜기(true)·끄기(false)" })),
+          remove_grants: Type.Optional(Type.Array(Type.String(), { description: "update_duty: 허용을 뺄 명령·도구 이름" })),
+          remove_mcp: Type.Optional(Type.Array(Type.String(), { description: "update_duty: 뺄 MCP 서버 이름" })),
+          run: Type.Optional(Type.Boolean({ description: "create_duty·update_duty: true면 만들거나 고친 뒤 바로 실행" })),
+          setting: Type.Optional(Type.String({ description: "set_config: 설정 이름 (대화 안내의 '지금 Mate 설정' 목록, 예: daily_run_limit, observe, system_health, phone_quiet)" })),
+          tunable: Type.Optional(Type.String({ description: "set_tunable: 설정 항목 id (Mate 기능 안내 파일의 목록, 예: duty.defaultTimeoutSec)" })),
+          value: Type.Optional(Type.Union([Type.String(), Type.Number(), Type.Boolean()], { description: "set_config·set_tunable: 바꿀 값 (set_tunable은 \"default\"면 기본값)" })),
         }),
         async execute(_id, params) {
           await appendChatAction(actions, params as Record<string, unknown>);
