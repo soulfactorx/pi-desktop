@@ -53,7 +53,7 @@ export function createMateApi(ipcRenderer: IpcRenderer): MateApi {
     revealHome: () => ipcRenderer.invoke(IpcChannels.revealHome),
     readSession: (runId) => ipcRenderer.invoke(IpcChannels.readSession, runId),
     applyChange: (itemId) => ipcRenderer.invoke(IpcChannels.applyChange, itemId),
-    delegate: (itemId) => ipcRenderer.invoke(IpcChannels.delegate, itemId),
+    delegate: (itemId, folder) => ipcRenderer.invoke(IpcChannels.delegate, itemId, folder),
     discardChange: (itemId) => ipcRenderer.invoke(IpcChannels.discardChange, itemId),
     getAutostart: () => ipcRenderer.invoke(IpcChannels.getAutostart),
     setAutostart: (enabled) => ipcRenderer.invoke(IpcChannels.setAutostart, enabled),

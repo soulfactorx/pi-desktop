@@ -189,8 +189,8 @@ export function mateAppApi(ctx: MateAppContext): MateAppApi {
     applyChange: async (itemId: string) => void (await applyInboxChange(paths, String(itemId))),
     discardChange: async (itemId: string) => void (await discardInboxChange(paths, String(itemId))),
     /** "Mate에게 맡기기": 제안의 맡길 일을 그 폴더에서 바로 실행한다 (DESIGN-MATE.md §10) */
-    delegate: async (itemId: string) => {
-      await delegateInboxItem(paths, String(itemId));
+    delegate: async (itemId: string, folder?: string | null) => {
+      await delegateInboxItem(paths, String(itemId), undefined, typeof folder === "string" && folder ? folder : undefined);
       ctx.wake();
     },
     applyInstall: (itemId: string) => applyInstall(paths, itemId, process.env, (source) => resources.packageInstall(source)),

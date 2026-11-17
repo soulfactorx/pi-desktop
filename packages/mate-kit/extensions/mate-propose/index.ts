@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import { Type } from "typebox";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendProposal, installError, makeProposal } from "../../src/proposal";
@@ -32,6 +33,11 @@ export default function mateProposeExtension(pi: ExtensionAPI): void {
         followUp: Type.Optional(
           Type.String({
             description: "사용자가 \"Mate에게 맡기기\"를 누르면 이 폴더에서 실행할 고치기 지시 (구체적으로). 고칠 일이 아니면 비운다",
+          }),
+        ),
+        followUpFolder: Type.Optional(
+          Type.String({
+            description: "followUp을 실행할 프로젝트 폴더의 절대 경로. 지금 폴더가 아닌 곳을 고칠 때만 (예: 시스템 관찰에서 찾은 프로젝트의 Dockerfile). 모르면 비운다 (사용자가 맡길 때 폴더를 고른다)",
           }),
         ),
         severity: Type.Optional(
@@ -78,7 +84,7 @@ export default function mateProposeExtension(pi: ExtensionAPI): void {
             detail: params.detail,
             severity: params.severity as Severity | undefined,
             ...(topic ? { topic } : {}),
-            ...(params.followUp ? { followUp: { prompt: params.followUp, cwd: process.cwd() } } : {}),
+            ...(params.followUp ? { followUp: { prompt: params.followUp, cwd: followUpCwd(params.followUpFolder) } } : {}),
             ...(install ? { install } : {}),
           },
           ids,
@@ -91,4 +97,10 @@ export default function mateProposeExtension(pi: ExtensionAPI): void {
       },
     }),
   );
+}
+
+/** 맡길 일을 실행할 폴더: 절대 경로를 주면 그곳, 아니면 이 실행의 폴더 */
+function followUpCwd(folder: string | undefined): string {
+  const f = folder?.trim();
+  return f && isAbsolute(f) ? f : process.cwd();
 }

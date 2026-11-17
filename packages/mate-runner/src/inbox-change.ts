@@ -27,12 +27,12 @@ export async function applyInboxChange(paths: MatePaths, itemId: string, exec: E
   } finally {
     await rm(patchFile, { force: true });
   }
-  await removeWorkspace(exec, change.repo, change.worktree);
+  await removeWorkspace(exec, change.repo, change.worktree, change.copy);
   await setInboxStatus(paths, [itemId], "applied");
 }
 
 export async function discardInboxChange(paths: MatePaths, itemId: string, exec: Exec = execCommand): Promise<void> {
   const { change } = await changeItem(paths, itemId);
-  if (existsSync(change.worktree)) await removeWorkspace(exec, change.repo, change.worktree);
+  if (existsSync(change.worktree)) await removeWorkspace(exec, change.repo, change.worktree, change.copy);
   await setInboxStatus(paths, [itemId], "dismissed");
 }

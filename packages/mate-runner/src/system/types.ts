@@ -39,6 +39,8 @@ export interface EventSummary {
   level: "critical" | "error";
   /** 가린 첫 줄 (경로·사용자 이름·주소·비밀값을 가림) */
   message: string;
+  /** 가린 전체 메시지 (여러 줄, 가장 최근 것). Windows 이벤트처럼 첫 줄 뒤에 설명이 있을 때 */
+  detail?: string;
   /** 날짜(로컬) → 횟수 */
   days: Record<string, number>;
   firstAt: number;

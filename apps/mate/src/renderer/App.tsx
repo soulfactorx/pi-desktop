@@ -175,7 +175,7 @@ export function App() {
       <AutostartBanner overview={overview} remote={Boolean(host?.remote)} act={act} />
       <main className="content">
         {tab === "chat" && <ChatView overview={overview} now={now} act={act} />}
-        {tab === "inbox" && <InboxPanel overview={overview} now={now} act={act} />}
+        {tab === "inbox" && <InboxPanel overview={overview} now={now} act={act} onAsk={() => setTab("chat")} />}
         {tab === "duties" && <DutiesView overview={overview} now={now} act={act} setup={setup} />}
         {tab === "activity" && <ActivityView overview={overview} now={now} act={act} />}
         {tab === "runs" && <RunsView overview={overview} now={now} act={act} />}

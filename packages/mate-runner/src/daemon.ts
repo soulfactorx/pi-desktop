@@ -186,7 +186,7 @@ export async function runDuty(
 
   if (workspace) {
     const kept = outcome.status === "done" && (await offerChange(options, duty, runId, workspace, outcome));
-    if (!kept) await removeWorkspace(exec, workspace.repo, workspace.worktree).catch(() => undefined);
+    if (!kept) await removeWorkspace(exec, workspace.repo, workspace.worktree, workspace.copy).catch(() => undefined);
   }
 
   if (duty.profile === "observe" && outcome.status === "done" && outcome.summary) {

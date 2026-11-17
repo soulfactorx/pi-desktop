@@ -165,6 +165,8 @@ export interface ChangeInfo {
   base: string;
   /** 바뀐 파일 (저장소 기준 경로) */
   files: string[];
+  /** git 저장소가 아닌 폴더: worktree가 그 폴더의 복사본이다 (적용은 같고, 지울 때는 복사본만 지운다) */
+  copy?: boolean;
 }
 
 /**

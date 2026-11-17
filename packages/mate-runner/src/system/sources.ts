@@ -24,6 +24,8 @@ export interface RawEvent {
   level: "critical" | "error";
   at: number;
   message: string;
+  /** 여러 줄 원문 (Windows 이벤트의 전체 메시지). 가리기 전 */
+  detail?: string;
 }
 
 export interface HealthReading {
@@ -44,7 +46,7 @@ export function windowsHealthScript(sinceMs: number): string {
   return [
     `$s=[DateTimeOffset]::FromUnixTimeMilliseconds(${Math.floor(sinceMs)}).LocalDateTime;`,
     "$e=@(Get-WinEvent -FilterHashtable @{LogName=@('System','Application');Level=@(1,2);StartTime=$s} -MaxEvents 300 | ForEach-Object {",
-    "[pscustomobject]@{p=$_.ProviderName;i=$_.Id;l=$_.Level;t=$_.TimeCreated.ToUniversalTime().ToString('o');m=(($_.Message -split \"`n\")[0])} });",
+    "[pscustomobject]@{p=$_.ProviderName;i=$_.Id;l=$_.Level;t=$_.TimeCreated.ToUniversalTime().ToString('o');m=(($_.Message -split \"`n\")[0]);d=$(if ($_.Message) { $_.Message.Substring(0,[Math]::Min(2000,$_.Message.Length)) })} });",
     "$t=@(Get-ScheduledTask -TaskPath '\\' | Where-Object {$_.State -ne 'Disabled'} | ForEach-Object { $i=$_ | Get-ScheduledTaskInfo;",
     "if ($i.LastTaskResult -ne 0 -and $i.LastTaskResult -ne 267009 -and $i.LastTaskResult -ne 267011 -and $i.LastRunTime -gt (Get-Date).AddDays(-7)) { $_.TaskName } });",
     "[pscustomobject]@{events=$e;tasks=$t} | ConvertTo-Json -Compress -Depth 3",
@@ -56,10 +58,10 @@ export function parseWindowsHealth(stdout: string): HealthReading {
   if (!text) return { events: [], failed: [] };
   const raw = JSON.parse(text) as { events?: unknown; tasks?: unknown };
   const list = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : v ? [v as T] : []);
-  const events = list<{ p?: string; i?: number; l?: number; t?: string; m?: string }>(raw.events).flatMap((e) => {
+  const events = list<{ p?: string; i?: number; l?: number; t?: string; m?: string; d?: string }>(raw.events).flatMap((e) => {
     const at = Date.parse(e.t ?? "");
     if (!e.p || !Number.isFinite(at)) return [];
-    return [{ source: e.p, id: String(e.i ?? 0), level: e.l === 1 ? ("critical" as const) : ("error" as const), at, message: e.m ?? "" }];
+    return [{ source: e.p, id: String(e.i ?? 0), level: e.l === 1 ? ("critical" as const) : ("error" as const), at, message: e.m ?? "", ...(e.d && e.d.trim() !== (e.m ?? "").trim() ? { detail: e.d } : {}) }];
   });
   const failed = list<string>(raw.tasks)
     .filter((n) => typeof n === "string" && n.trim())
