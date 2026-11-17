@@ -1,3 +1,4 @@
+import type { ObserveLive } from "./activity-types";
 import { DEFAULT_SYSTEM_OBSERVE, type SystemObserveConfig, type SystemWatchState } from "./system/types";
 import type { MateProfile } from "@pi-desktop/mate-kit/shared";
 import type { ObserverState } from "./activity-types";
@@ -207,11 +208,13 @@ export interface RunnerState {
   duties: Record<string, { lastRunAt?: number; lastStatus?: RunStatus; watch?: WatchState }>;
   /** 오늘(로컬 날짜) 자동 실행 수와 비용 (지금 실행 포함한 비용) */
   today: { date: string; count: number; costUsd?: number };
-  current?: { runId: string; dutyId: string; startedAt: number };
+  current?: { runId: string; dutyId: string; startedAt: number; cause?: string };
   /** 활동 관찰 (M4) */
   observer?: ObserverState;
   /** 시스템 관찰 (§10.1) */
   system?: SystemWatchState;
+  /** 관찰 현황 (활동 탭의 "지금 관찰 중") */
+  live?: ObserveLive;
 }
 
 /** "지금 실행" 요청 (requests/<시각>-<id>.json) */

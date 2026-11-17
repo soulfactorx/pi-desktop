@@ -12,6 +12,7 @@ import { applyInboxChange, discardInboxChange } from "./inbox-change";
 import { applyInstall, describeInstall } from "./install";
 import { OBSERVER_DUTY_ID, OBSERVER_NAME, readActivity, topicFeedback } from "./observer";
 import { emptySystemState, SystemWatch } from "./system/watch";
+import { liveView } from "./live";
 import { execCommand } from "./watchers";
 import type { MatePaths } from "./paths";
 import { piReadiness } from "./pi-readiness";
@@ -135,6 +136,7 @@ export function mateAppApi(ctx: MateAppContext): MateAppApi {
         projects: Object.values(state.observer?.projects ?? {}),
         feedback,
         ...(state.observer ? { since: state.observer.since } : {}),
+        live: liveView(state, config, now),
       },
       system: await system.view(state, config, now),
       trash,

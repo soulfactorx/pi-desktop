@@ -14,6 +14,8 @@ import type { ActivityRecord, Candidate, ObserverState, SessionAggregate } from 
 import type { MatePaths } from "./paths";
 import { localDateKey } from "./schedule";
 import { loadInboxState } from "./store";
+import { liveStep } from "./live";
+import { folderAlias } from "./remote/messages";
 import type { Duty, MateConfig, RunnerState } from "./types";
 import type { Exec } from "./watchers";
 import { mateDefault, mateTunables } from "./tunables";
@@ -83,7 +85,8 @@ export class Observer {
     const today = localDateKey(now);
     if (obs.today.date !== today) obs.today = { date: today, count: 0 };
 
-    const finished = await this.scanSessions(obs, config, now);
+    const scan = { files: 0, lines: 0 };
+    const finished = await this.scanSessions(obs, config, now, scan);
     const candidates: Candidate[] = [];
     const ended: SessionAggregate[] = [];
     for (const session of finished) {
@@ -97,9 +100,21 @@ export class Observer {
       obs.recent = [...obs.recent, session].slice(-mateTunables().num("observer.recentSessions"));
       await this.record({ at: now, kind: "session-ended", session });
     }
-    if (!obs.projectsAt || now - obs.projectsAt >= mateTunables().num("observer.projectIntervalMinutes") * 60_000) {
+    const userEnded = finished.filter((s) => s.app !== "mate");
+    liveStep(
+      state,
+      "sessions",
+      now,
+      `세션 파일 ${scan.files}개 확인 · 새 줄 ${scan.lines}개${userEnded.length ? ` · 끝난 작업 ${userEnded.length}개 (${userEnded.map((s) => folderAlias(s.cwd)).join(", ")})` : ""}`,
+      { next: now + 30_000 },
+    );
+    const projectEvery = mateTunables().num("observer.projectIntervalMinutes") * 60_000;
+    if (!obs.projectsAt || now - obs.projectsAt >= projectEvery) {
       obs.projectsAt = now;
-      candidates.push(...(await this.scanProjects(obs, config, now)));
+      const found = await this.scanProjects(obs, config, now);
+      candidates.push(...found);
+      const names = Object.values(obs.projects).map((p) => `${folderAlias(p.cwd)}${p.ahead ? ` push 안 함 ${p.ahead}` : ""}${p.dirty ? ` 변경 ${p.dirty}` : ""}`);
+      liveStep(state, "projects", now, `저장소 ${names.length}개 확인${names.length ? `: ${names.slice(0, 5).join(" · ")}` : ""}${found.length ? ` · 알릴 거리 ${found.length}개` : ""}`, { next: now + projectEvery });
     }
     await this.handle(obs, config, candidates, now);
     return { ended };
@@ -122,7 +137,7 @@ export class Observer {
     return job;
   }
 
-  private async scanSessions(obs: ObserverState, config: MateConfig, now: number): Promise<SessionAggregate[]> {
+  private async scanSessions(obs: ObserverState, config: MateConfig, now: number, scan = { files: 0, lines: 0 }): Promise<SessionAggregate[]> {
     const quiet = config.observe.quietMinutes * 60_000;
     const sources = observedSessions(this.env, [this.paths.sessions, this.paths.chatSessions]);
     const since = now - 2 * 24 * 3_600_000;
@@ -130,6 +145,7 @@ export class Observer {
       await Promise.all(sources.sources.map(async ({ dir, app }) => (await recentSessionFiles(dir, since)).map((file) => ({ ...file, app }))))
     ).flat();
     const excluded = [...config.observe.excluded, ...sources.internal];
+    scan.files = files.length;
     const ended: SessionAggregate[] = [];
     for (const file of files) {
       let entry = obs.files[file.path];
@@ -141,6 +157,7 @@ export class Observer {
         const calls = this.toolCalls.get(file.path) ?? new Map<string, string>();
         this.toolCalls.set(file.path, calls);
         const { lines, offset } = await readNewLines(file.path, entry.offset, file.size);
+        scan.lines += lines.length;
         let aggregate = entry.aggregate;
         for (const line of lines) aggregate = applySessionLine(aggregate, line, calls);
         if (aggregate) aggregate.app = file.app;
@@ -157,7 +174,7 @@ export class Observer {
       if (isObserved(agg.cwd, agg.app === "mate" ? config.observe.excluded : excluded)) ended.push(agg);
       // 같은 세션을 이어 쓰면 다음 작업은 새로 센다
       entry.aggregate = { ...agg, startedAt: agg.lastAt, prompts: 0, firstPrompt: undefined, editedFiles: [], commands: 0, ranTests: false, failures: [], modelErrors: [] };
-      delete entry.aggregate.firstPrompt;
+      for (const key of ["firstPrompt", "promptLog", "tools", "commandLog", "turns", "tokens", "costUsd"] as const) delete entry.aggregate[key];
     }
     // 이틀 넘게 안 바뀐 파일은 잊는다
     const live = new Set(files.map((f) => f.path));
@@ -209,9 +226,14 @@ export class Observer {
   }
 
   async record(record: ActivityRecord): Promise<void> {
-    await appendFile(this.paths.activity, `${JSON.stringify(record)}\n`, "utf8").catch(() => undefined);
-    await pruneActivity(this.paths);
+    await recordActivity(this.paths, record);
   }
+}
+
+/** 활동 기록에 한 줄을 더한다 (오래된 것은 activity.jsonl 줄 수 설정만큼만 남긴다) */
+export async function recordActivity(paths: MatePaths, record: ActivityRecord): Promise<void> {
+  await appendFile(paths.activity, `${JSON.stringify(record)}\n`, "utf8").catch(() => undefined);
+  await pruneActivity(paths);
 }
 
 /** 관찰자 실행을 알아보는 표시라 바꿀 수 없다 (observer.head, 읽기 전용) */

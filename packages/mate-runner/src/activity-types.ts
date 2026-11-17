@@ -29,13 +29,81 @@ export interface SessionAggregate {
   failures: string[];
   /** 모델 오류 (예: Connection error) */
   modelErrors: string[];
+  // ── 자세한 기록 (이 값들이 생기기 전 기록에는 없다) ──
+  /** 사용자 요청들 (앞부분, 가림 처리, 최대 activity.maxPrompts개). 모델 답변은 남기지 않는다 */
+  promptLog?: Array<{ at: number; text: string }>;
+  /** 쓴 도구별 횟수 (read·edit·bash …) */
+  tools?: Record<string, number>;
+  /** 실행한 명령 (앞부분, 가림 처리, 최대 activity.maxCommands개) */
+  commandLog?: string[];
+  /** 마지막으로 쓴 모델 (provider/model) */
+  model?: string;
+  /** 모델 응답 수와 토큰·비용 합계 */
+  turns?: number;
+  tokens?: number;
+  costUsd?: number;
 }
 
 /** activity.jsonl 한 줄 */
 export type ActivityRecord =
   | { at: number; kind: "session-ended"; session: SessionAggregate }
   | { at: number; kind: "project"; project: ProjectSnapshot }
-  | { at: number; kind: "suggested"; topic: string; key: string; cwd: string; title: string; via: "rule" | "observer" };
+  | { at: number; kind: "suggested"; topic: string; key: string; cwd: string; title: string; via: "rule" | "observer" }
+  /** 시스템 관찰에서 생긴 일 (새 오류·실패, 하루 요약, 되풀이 작업 질문·답) */
+  | { at: number; kind: "system"; what: SystemEventKind; title: string; details?: string[] }
+  /** 관찰자 실행 (모델이 후보·요약을 살펴봄)이 끝남 */
+  | { at: number; kind: "observer-run"; runId: string; cause: string; topic?: string; status: string; proposals: number; durationMs: number; costUsd?: number };
+
+export type SystemEventKind = "health" | "shell-day" | "apps-day" | "habit-asked" | "habit-answer";
+
+export const SYSTEM_EVENT_LABELS: Record<SystemEventKind, string> = {
+  health: "시스템 건강",
+  "shell-day": "셸 명령 하루 요약",
+  "apps-day": "프로그램 하루 요약",
+  "habit-asked": "되풀이 작업 질문",
+  "habit-answer": "되풀이 작업 답",
+};
+
+/** 관찰 출처 (실시간 현황의 줄) */
+export type LiveSource = "sessions" | "projects" | "health" | "history" | "apps" | "analysis";
+
+export const LIVE_SOURCE_LABELS: Record<LiveSource, string> = {
+  sessions: "Pi 세션 읽기",
+  projects: "저장소 상태",
+  health: "시스템 건강",
+  history: "셸 기록",
+  apps: "켜져 있는 프로그램",
+  analysis: "모델 분석",
+};
+
+/** 출처 하나의 마지막 확인 */
+export interface LiveStep {
+  at: number;
+  ok: boolean;
+  /** 무엇을 했는지 한 줄 (예: "새 세션 줄 12개 읽음, 끝난 작업 1개") */
+  note: string;
+  /** 다음 확인 예정 시각 */
+  next?: number;
+}
+
+/** 실행기 상태에 남기는 관찰 현황 (활동 탭의 "지금 관찰 중") */
+export interface ObserveLive {
+  /** 실행기가 마지막으로 관찰을 확인한 시각 (30초마다) */
+  tickAt: number;
+  /** 지금 하는 일 (오래 걸리는 확인 중에만) */
+  doing?: { what: string; since: number };
+  steps: Partial<Record<LiveSource, LiveStep>>;
+}
+
+/** 화면의 "지금 관찰 중" */
+export interface LiveView extends ObserveLive {
+  /** 진행 중인 Pi 세션 (아직 "작업 끝"이 아님) */
+  active: Array<{ app?: SessionApp; cwd: string; prompts: number; firstPrompt?: string; lastAt: number; endsAt: number; tools: number }>;
+  /** 관찰자가 살펴볼 차례를 기다리는 후보 */
+  queue: Array<{ topic: string; title: string; cwd: string }>;
+  /** 지금 도는 관찰자 실행 */
+  running?: { cause: string; since: number; runId: string };
+}
 
 /** 저장소 상태 (최근 작업한 폴더만 주기적으로) */
 export interface ProjectSnapshot {

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readChat, readInbox } from "@pi-desktop/mate-kit";
 import { runTools } from "../src/executor";
+import { readActivity } from "../src/observer";
 import { matePaths, type MatePaths } from "../src/paths";
 import { localDateKey } from "../src/schedule";
 import { saveConfig } from "../src/store";
@@ -151,6 +152,11 @@ describe("시스템 관찰: 실행기", () => {
     expect(state.system!.failed).toEqual([expect.objectContaining({ name: "backup.service", kind: "service" })]);
     const items = await readInbox(paths.inbox);
     expect(items.map((i) => i.topic)).toEqual(["system-health", "system-health"]);
+    // 관찰 현황과 활동 기록 (가린 내용으로)
+    expect(state.live?.steps.health).toMatchObject({ ok: true, note: expect.stringContaining("새 오류 3건 (backup.service)"), next: now + HOUR });
+    const records = await readActivity(paths);
+    expect(records).toEqual([expect.objectContaining({ kind: "system", what: "health", title: "새 오류 3건, 새로 실패 1개" })]);
+    expect(JSON.stringify(records)).not.toContain("alice");
     expect(items.some((i) => i.title.includes("되풀이"))).toBe(true);
     // 간격 안에서는 다시 읽지 않고, 같은 것은 다시 알리지 않는다
     const before = calls;
@@ -185,9 +191,17 @@ describe("시스템 관찰: 실행기", () => {
     expect(chat.filter((l) => l.kind === "question")).toHaveLength(1);
     expect(chat[0]!.text).toContain("git pull → npm test → git commit");
     expect(chat[0]!.options).toEqual(["예, 임무로 만들어 줘", "아니요, 괜찮아요"]);
-    // 같은 날 다시 묻지 않는다
+    expect(state.live?.steps.history?.note).toContain("새 명령 15개 셈");
+    expect((await readActivity(paths)).map((r) => (r.kind === "system" ? r.what : r.kind))).toEqual(["habit-asked"]);
+    // 같은 날 다시 묻지 않는다 (그 사이 새 명령 하나: 시각이 없으면 읽은 때로 센다)
+    await writeFile(history, `${past.join("\n")}\ncargo build --release\n`);
     await watch.tick(state, config({ habits: true, shellHistory: true }), now + HOUR);
     expect((await readChat(paths.chat)).filter((l) => l.kind === "question")).toHaveLength(1);
+    // 날이 바뀌면 지난날의 명령 모양을 하루 요약으로 남긴다 (모양과 횟수만)
+    await watch.tick(state, config({ habits: true, shellHistory: true }), now + 24 * HOUR);
+    const day = (await readActivity(paths)).find((r) => r.kind === "system" && r.what === "shell-day");
+    expect(day).toMatchObject({ title: expect.stringContaining("셸 명령") });
+    expect(JSON.stringify(day)).not.toContain("비밀 메모");
     // 셸 기록만 끄면 명령 기록은 지운다
     await watch.tick(state, config({ habits: true }), now + 2 * HOUR);
     expect(state.system?.shellDays).toEqual({});

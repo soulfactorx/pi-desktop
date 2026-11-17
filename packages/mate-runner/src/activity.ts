@@ -81,12 +81,21 @@ export function applySessionLine(aggregate: SessionAggregate | undefined, line: 
       if (!text) break;
       next.prompts += 1;
       next.firstPrompt ??= short(text);
+      if ((next.promptLog?.length ?? 0) < mateTunables().num("activity.maxPrompts")) next.promptLog = [...(next.promptLog ?? []), { at, text: short(text) }];
       break;
     }
     case "assistant":
+      next.turns = (next.turns ?? 0) + 1;
+      if (typeof message.model === "string") next.model = typeof message.provider === "string" ? `${message.provider}/${message.model}` : message.model;
+      if (message.usage && typeof message.usage === "object") {
+        const usage = message.usage as { totalTokens?: unknown; cost?: { total?: unknown } };
+        if (typeof usage.totalTokens === "number") next.tokens = (next.tokens ?? 0) + usage.totalTokens;
+        if (typeof usage.cost?.total === "number") next.costUsd = (next.costUsd ?? 0) + usage.cost.total;
+      }
       for (const part of Array.isArray(message.content) ? message.content : []) {
         if (part?.type !== "toolCall") continue;
         const args = (part.arguments ?? {}) as Record<string, unknown>;
+        if (typeof part.name === "string" && /^[\w.:-]{1,64}$/.test(part.name)) next.tools = { ...next.tools, [part.name]: (next.tools?.[part.name] ?? 0) + 1 };
         if ((part.name === "write" || part.name === "edit") && typeof args.path === "string") {
           const file = args.path.replace(/^@/, "").replace(/\\/g, "/");
           if (!next.editedFiles.includes(file) && next.editedFiles.length < mateTunables().num("activity.maxFiles")) next.editedFiles = [...next.editedFiles, file];
@@ -94,6 +103,7 @@ export function applySessionLine(aggregate: SessionAggregate | undefined, line: 
           const command = lastCommandLine(args.command);
           next.commands += 1;
           if (isTestCommand(command)) next.ranTests = true;
+          if ((next.commandLog?.length ?? 0) < mateTunables().num("activity.maxCommands")) next.commandLog = [...(next.commandLog ?? []), short(command)];
           if (typeof part.id === "string") toolCalls.set(part.id, command);
         }
       }

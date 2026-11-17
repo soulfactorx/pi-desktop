@@ -1197,3 +1197,173 @@ code.copy {
   border-radius: 6px;
   background: var(--panel-2, transparent);
 }
+
+/* 지금 관찰 중 (활동 탭) */
+.live-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.live-panel h3 {
+  margin: 8px 0 2px;
+  font-size: 13px;
+}
+
+.live-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+
+.live-dot.on {
+  background: var(--ok);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent);
+  animation: live-pulse 2s infinite;
+}
+
+@keyframes live-pulse {
+  70% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot.on,
+  .spinner {
+    animation: none;
+  }
+}
+
+.live-doing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  flex: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.live-steps {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.live-steps th,
+.live-steps td {
+  text-align: left;
+  vertical-align: top;
+  padding: 3px 6px;
+  border-top: 1px solid var(--border);
+}
+
+.live-steps th {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.live-steps tr.bad th,
+.live-steps tr.bad td:nth-child(2) {
+  color: var(--warn);
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+/* 활동 기록 자세히 */
+.card-head.clickable {
+  cursor: pointer;
+}
+
+.expand-mark {
+  font-size: 11px;
+}
+
+.activity-details {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+ul.activity-details {
+  padding-left: 22px;
+}
+
+.activity-details .detail {
+  display: grid;
+  grid-template-columns: 7em 1fr;
+  gap: 8px;
+}
+
+.activity-details ol,
+.activity-details ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.activity-details .mono {
+  font-family: ui-monospace, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .activity-details .detail {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  /* 좁은 화면: 출처 이름을 한 줄, 그 아래 결과와 시각 */
+  .live-steps tr {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    border-top: 1px solid var(--border);
+    padding: 3px 0;
+  }
+
+  .live-steps th,
+  .live-steps td {
+    border-top: none;
+    padding: 1px 4px;
+  }
+
+  .live-steps th {
+    grid-column: 1 / -1;
+  }
+}

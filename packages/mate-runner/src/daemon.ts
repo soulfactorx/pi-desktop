@@ -10,7 +10,8 @@ import { isolationDirOf, runPi, type PiLaunch, type RunOutcome } from "./executo
 import type { MatePaths } from "./paths";
 import { isDue, localDateKey } from "./schedule";
 import { ChangeWatchers, execCommand, notePending, type Exec } from "./watchers";
-import { Observer, observerDuty } from "./observer";
+import { Observer, observerDuty, recordActivity } from "./observer";
+import { liveForget, liveOf, liveStep } from "./live";
 import { emptySystemState, SYSTEM_TOPICS, SystemWatch } from "./system/watch";
 import { TELEGRAM_TOKEN_ENV } from "./remote/telegram-api";
 import { TelegramRemote } from "./remote/telegram-remote";
@@ -232,7 +233,7 @@ export class Runner {
   constructor(private readonly options: RunnerOptions) {
     this.watchers = new ChangeWatchers(options.exec, (message) => void log(options.paths, message));
     this.observer = new Observer(options.paths, options.exec ?? execCommand);
-    this.system = new SystemWatch(options.paths, options.exec ?? execCommand);
+    this.system = new SystemWatch(options.paths, options.exec ?? execCommand, { save: () => saveState(options.paths, this.state) });
   }
 
   private now(): number {
@@ -340,6 +341,11 @@ export class Runner {
     // 일시 정지·상한 중에도 변화는 기록해 둔다 (기준이 어긋나지 않게)
     await this.watchers.refresh(duties, () => this.state, this.now());
     const config = await loadConfig(paths);
+    // 관찰 현황: 이번 확인 시각 (화면의 "지금 관찰 중")
+    if (config.observe.enabled || config.observe.system.health || config.observe.system.habits || config.observe.system.apps) {
+      liveOf(this.state, this.now()).tickAt = this.now();
+      liveForget(this.state, config);
+    } else delete this.state.live;
     // 활동 관찰: 끝난 Pi 세션을 "작업을 마치면" 임무에 변화로 알린다
     const observed = await this.observer.tick(this.state, config, this.now()).catch(async (error: Error) => {
       await log(paths, `observe error ${error.stack ?? error.message}`);
@@ -371,9 +377,31 @@ export class Runner {
     this.state.duties[duty.id] = { ...this.state.duties[duty.id], lastRunAt: startedAt };
     if (reason !== "manual") this.state.today.count += 1;
     const runId = newRunId(startedAt);
-    this.state.current = { runId, dutyId: duty.id, startedAt };
+    this.state.current = { runId, dutyId: duty.id, startedAt, ...(cause && reason === "observe" ? { cause } : {}) };
     await saveState(paths, this.state);
     const record = await runDuty(this.options, duty, { reason, ...(cause ? { cause } : {}), ...(topic ? { topic } : {}), runId }, this.abort.signal);
+    // 관찰자 실행은 활동 기록에도 남긴다 (무엇을 살펴봤고 제안을 몇 개 남겼는지)
+    if (reason === "observe") {
+      const durationMs = this.now() - startedAt;
+      await recordActivity(paths, {
+        at: this.now(),
+        kind: "observer-run",
+        runId,
+        cause: cause ?? duty.name,
+        ...(topic ? { topic } : {}),
+        status: record.status,
+        proposals: record.proposals ?? 0,
+        durationMs,
+        ...(record.costUsd ? { costUsd: record.costUsd } : {}),
+      });
+      if (topic === SYSTEM_TOPICS.digest) {
+        const prev = this.state.live?.steps.analysis;
+        liveStep(this.state, "analysis", this.now(), record.status === "done" ? `요약을 살펴봄 · 제안 ${record.proposals ?? 0}개` : `요약 분석 실패 (${record.status})`, {
+          ok: record.status === "done",
+          ...(prev?.next !== undefined ? { next: prev.next } : {}),
+        });
+      }
+    }
     // 실행하는 동안 생긴 변화는 남기고, 실행 전 변화만 처리한 것으로 본다
     const entry = this.state.duties[duty.id] ?? {};
     const watch = entry.watch && entry.watch.pending && entry.watch.pending.lastAt <= startedAt ? { ...entry.watch, pending: undefined } : entry.watch;
