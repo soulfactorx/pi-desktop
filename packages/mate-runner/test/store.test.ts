@@ -23,6 +23,7 @@ import {
   writeRun,
 } from "../src/store";
 import type { RunRecord } from "../src/types";
+import { DEFAULT_SYSTEM_OBSERVE } from "../src/system/types";
 
 let paths: MatePaths;
 beforeEach(async () => {
@@ -42,7 +43,7 @@ describe("store", () => {
       dailyRunLimit: 20,
       maxCostUsd: 0.5,
       // 활동 관찰은 사용자가 켜야 한다
-      observe: { enabled: false, quietMinutes: 5, dailySuggestionLimit: 5, excluded: [] },
+      observe: { enabled: false, quietMinutes: 5, dailySuggestionLimit: 5, excluded: [], system: DEFAULT_SYSTEM_OBSERVE },
       // 휴대폰 연결도 사용자가 켜야 하고, 고치기는 따로 허용해야 한다
       telegram: { enabled: false, pairEpoch: 0, notify: "action", sendDetail: true, allowFix: false, mirrorApp: false },
       // 대화는 MCP를 쓰지 않는 것이 기본이다

@@ -101,6 +101,14 @@ export function mateSystemPrompt(duty: Duty, cause?: string, installHints: strin
   return lines.join("\n");
 }
 
+/** 선언할 도구: 권한 단계의 도구 + 고른 MCP·패키지 도구. 임무가 tools로 좁히면 권한 단계의 도구 중 그것만 (MCP·패키지 도구 없음) */
+export function runTools(input: RunInput): string[] {
+  const { duty } = input;
+  const base = profileTools(input.chat ? "chat" : duty.profile);
+  if (duty.tools && !input.chat) return base.filter((tool) => duty.tools!.includes(tool));
+  return [...base, ...(duty.mcpServers ?? []).map(mcpToolPattern), ...(input.packageTools ?? [])];
+}
+
 export function piArgs(input: RunInput): string[] {
   const { duty } = input;
   const servers = duty.mcpServers ?? [];
@@ -119,7 +127,7 @@ export function piArgs(input: RunInput): string[] {
       ...(duty.skills ? { skills: duty.skills } : {}),
     }),
     // 고른 서버의 도구는 이름 패턴으로 선언한다. 처음 쓰는 도구는 mate-guard가 막고 허용을 묻는다
-    "--tools", [...profileTools(input.chat ? "chat" : duty.profile), ...servers.map(mcpToolPattern), ...(input.packageTools ?? [])].join(","),
+    "--tools", runTools(input).join(","),
     // 모델을 정하지 않았으면 Pi 기본 모델(settings.json)을 따른다
     ...(input.model ? ["--model", input.model] : []),
     "--append-system-prompt", input.chat?.systemPrompt ?? mateSystemPrompt(duty, input.cause, input.installHints),

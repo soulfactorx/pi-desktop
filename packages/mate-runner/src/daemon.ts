@@ -11,6 +11,7 @@ import type { MatePaths } from "./paths";
 import { isDue, localDateKey } from "./schedule";
 import { ChangeWatchers, execCommand, notePending, type Exec } from "./watchers";
 import { Observer, observerDuty } from "./observer";
+import { emptySystemState, SYSTEM_TOPICS, SystemWatch } from "./system/watch";
 import { TELEGRAM_TOKEN_ENV } from "./remote/telegram-api";
 import { TelegramRemote } from "./remote/telegram-remote";
 import { ChatAgent } from "./chat/chat-agent";
@@ -223,6 +224,7 @@ export class Runner {
   private queue: string[] = [];
   private readonly watchers: ChangeWatchers;
   private readonly observer: Observer;
+  private readonly system: SystemWatch;
   private remote: TelegramRemote | undefined;
   private telegramToken: string | undefined;
   private chat: ChatAgent | undefined;
@@ -230,6 +232,7 @@ export class Runner {
   constructor(private readonly options: RunnerOptions) {
     this.watchers = new ChangeWatchers(options.exec, (message) => void log(options.paths, message));
     this.observer = new Observer(options.paths, options.exec ?? execCommand);
+    this.system = new SystemWatch(options.paths, options.exec ?? execCommand);
   }
 
   private now(): number {
@@ -343,6 +346,8 @@ export class Runner {
       return { ended: [] };
     });
     markSessionEnds(duties, this.state, observed.ended, this.now());
+    // 시스템 관찰: 켠 출처만 정해진 간격으로 읽고, 규칙 알림·되풀이 작업 질문을 남긴다
+    await this.system.tick(this.state, config, this.now()).catch((error: Error) => log(paths, `system watch error ${error.stack ?? error.message}`));
     if (config.paused || this.state.today.count >= config.dailyRunLimit) return undefined;
     for (const duty of duties) {
       const entry = this.state.duties[duty.id];
@@ -353,6 +358,9 @@ export class Runner {
     // 할 임무가 없고 사용자가 쉬는 중이면 관찰자가 후보 하나를 살펴본다
     const job = this.observer.nextJob(this.state, config, this.now());
     if (job) return { duty: observerDuty(job, this.now()), reason: "observe", cause: job.title, topic: job.topic };
+    // 하루 한 번 시스템 관찰 요약을 모델에게 보내 제안받는다 (켰을 때만)
+    const systemJob = await this.system.nextJob(this.state, config, this.now()).catch(() => undefined);
+    if (systemJob) return { duty: systemJob, reason: "observe", cause: "시스템 관찰 요약", topic: SYSTEM_TOPICS.digest };
     return undefined;
   }
 
@@ -373,6 +381,14 @@ export class Runner {
     this.state.today.costUsd = (this.state.today.costUsd ?? 0) + (record.costUsd ?? 0);
     delete this.state.current;
     await saveState(paths, this.state);
+  }
+
+  /** 시스템 관찰이 모은 기록을 지운다. 읽은 위치는 남겨, 지운 기록을 다시 읽어 오지 않게 한다 */
+  async clearSystem(): Promise<void> {
+    const st = this.state.system;
+    if (!st) return;
+    this.state.system = { ...emptySystemState(this.now()), history: st.history, ...(st.healthCursor ? { healthCursor: st.healthCursor } : {}) };
+    await saveState(this.options.paths, this.state);
   }
 
   private async heartbeat(): Promise<void> {

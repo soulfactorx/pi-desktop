@@ -12,6 +12,8 @@ export function createMateApi(ipcRenderer: IpcRenderer): MateApi {
     deleteDuty: (id) => ipcRenderer.invoke(IpcChannels.deleteDuty, id),
     deleteRun: (id) => ipcRenderer.invoke(IpcChannels.deleteRun, id),
     clearChat: () => ipcRenderer.invoke(IpcChannels.clearChat),
+    systemDigest: () => ipcRenderer.invoke(IpcChannels.systemDigest),
+    systemClear: () => ipcRenderer.invoke(IpcChannels.systemClear),
     restoreTrash: (id) => ipcRenderer.invoke(IpcChannels.restoreTrash, id),
     emptyTrash: (ids) => ipcRenderer.invoke(IpcChannels.emptyTrash, ids),
     applyInstall: (itemId) => ipcRenderer.invoke(IpcChannels.applyInstall, itemId),

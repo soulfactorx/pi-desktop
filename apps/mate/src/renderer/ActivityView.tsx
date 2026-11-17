@@ -4,6 +4,7 @@ import type { ActivityRecord, Overview } from "../shared/api";
 import type { Act } from "./App";
 import { relativeTime } from "./mate-view";
 import { pickFolder } from "./folder-pick";
+import { SystemSection } from "./SystemSection";
 
 /**
  * 활동 관찰 (설계 DESIGN-MATE.md §10, M4).
@@ -21,6 +22,7 @@ export function ActivityView({ overview, now, act }: { overview: Overview; now: 
   const save = (patch: Partial<typeof observe>) => void act(() => window.mate.saveConfig({ observe: patch }));
 
   return (
+    <>
     <section className="form">
       <label className="radio">
         <input type="checkbox" checked={observe.enabled} onChange={() => save({ enabled: !observe.enabled })} />
@@ -32,7 +34,7 @@ export function ActivityView({ overview, now, act }: { overview: Overview; now: 
           <strong>보는 것</strong>: Pi Desktop·터미널 Pi·Pi Desktop Agent 세션 기록(요청, 고친 파일, 실패한 명령, 오류. 읽기만 함)과 최근 작업한 저장소의 git 상태. Mate 자신의 임무·대화도 활동에 남깁니다 (알림·"작업을 마치면" 계기에는 쓰지 않음).
         </div>
         <div>
-          <strong>보지 않는 것</strong>: 화면, 키 입력, 다른 프로그램. 파일 내용·모델 답변은 기록하지 않고, 요청·명령은 앞부분만 남기며 비밀값처럼
+          <strong>보지 않는 것</strong>: 화면, 키 입력, 다른 프로그램(아래 시스템 관찰을 따로 켜야 이름만 봅니다). 파일 내용·모델 답변은 기록하지 않고, 요청·명령은 앞부분만 남기며 비밀값처럼
           보이는 것은 가립니다. 기록은 이 PC의 Mate 데이터 폴더에만 있습니다.
         </div>
         <div>
@@ -111,6 +113,8 @@ export function ActivityView({ overview, now, act }: { overview: Overview; now: 
         </>
       )}
     </section>
+    <SystemSection overview={overview} now={now} act={act} />
+    </>
   );
 }
 
