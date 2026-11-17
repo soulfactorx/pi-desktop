@@ -69,6 +69,18 @@ export function App() {
     };
   }, [refresh]);
 
+  // 활동 탭을 보는 동안은 "지금 관찰 중"이 살아 있게 자주 다시 읽고, 경과 시간은 1초마다 고친다
+  useEffect(() => {
+    if (tab !== "activity") return;
+    void refresh();
+    const clock = setInterval(() => setNow(Date.now()), 1_000);
+    const poll = setInterval(() => void refresh(), 3_000);
+    return () => {
+      clearInterval(clock);
+      clearInterval(poll);
+    };
+  }, [tab, refresh]);
+
   /**
    * 화면 동작 뒤 바로 다시 읽고, 실패하면 위에 보인다. 성공 여부를 돌려준다 (실패하면 폼을 닫지 않도록).
    * 동작 오류는 다시 읽기(refresh)가 지우지 않게 따로 두고, 다음 동작이 성공하면 지운다.

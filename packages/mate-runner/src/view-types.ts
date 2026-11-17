@@ -1,3 +1,4 @@
+import type { LiveView } from "./activity-types";
 import type { SystemView } from "./system/types";
 import type { ChatLine, InboxItem } from "@pi-desktop/mate-kit/shared";
 import type { ActivityRecord, ProjectSnapshot } from "./activity-types";
@@ -79,6 +80,8 @@ export interface ObserveView {
   /** 주제별 사용자 반응 (보여 줌·받아들임·버림) */
   feedback: Record<string, { shown: number; accepted: number; dismissed: number }>;
   since?: number;
+  /** 지금 관찰 중 (출처별 마지막 확인·진행 중인 세션·대기 후보·도는 관찰자 실행) */
+  live: LiveView;
 }
 
 /** 화면에서 만들거나 고친 임무. id가 없으면 새 임무 */

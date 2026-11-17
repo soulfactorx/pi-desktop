@@ -7,6 +7,7 @@ import { applySessionLine, failureKey, isObserved, isTestCommand, projectCandida
 import type { SessionAggregate } from "../src/activity-types";
 import { markSessionEnds } from "../src/daemon";
 import { Observer, readActivity } from "../src/observer";
+import { liveView } from "../src/live";
 import { matePaths, type MatePaths } from "../src/paths";
 import { DEFAULT_CONFIG, type Duty, type MateConfig, type RunnerState } from "../src/types";
 import type { Exec } from "../src/watchers";
@@ -155,6 +156,45 @@ describe("Observer", () => {
     await appendFile(file, `${line({ type: "message", timestamp: ts(later + 120_000), message: { role: "user", content: "하나 더" } })}\n`);
     expect((await observer.tick(state, config(), later + 130_000)).ended).toEqual([]);
     expect((await observer.tick(state, config(), later + 130_000 + 6 * 60_000)).ended.map((s) => s.firstPrompt)).toEqual(["하나 더"]);
+  });
+
+  it("자세한 기록(요청들·도구·명령·모델·토큰)을 모으고, 진행 중인 작업과 관찰 현황을 보인다", async () => {
+    const observer = new Observer(paths, noGit, sessionEnv());
+    const state: RunnerState = { duties: {}, today: { date: "", count: 0 } };
+    const now = Date.now();
+    const file = join(sessions, "2026_s2.jsonl");
+    const lines = [
+      ...sessionLines("/repo", now, { edit: true, test: true }),
+      line({ type: "message", timestamp: ts(now + 1500), message: { role: "user", content: [{ type: "text", text: "이제 README도 고쳐줘 password=hunter2" }] } }),
+      line({
+        type: "message",
+        timestamp: ts(now + 2000),
+        message: {
+          role: "assistant",
+          provider: "anthropic",
+          model: "claude-haiku-5-5",
+          usage: { totalTokens: 1200, cost: { total: 0.002 } },
+          content: [{ type: "toolCall", id: "c9", name: "read", arguments: { path: "README.md" } }],
+          stopReason: "toolUse",
+        },
+      }),
+    ];
+    await writeFile(file, `${lines.join("\n")}\n`);
+    await observer.tick(state, config(), now + 60_000);
+    // 진행 중: 화면의 "지금 관찰 중"에 보인다
+    const live = liveView(state, config(), now + 60_000);
+    expect(live.steps.sessions?.note).toContain("새 줄");
+    expect(live.active).toEqual([expect.objectContaining({ cwd: "/repo", prompts: 2, tools: 3, endsAt: now + 2000 + 5 * 60_000 })]);
+    // 끝나면 자세한 요약이 남는다
+    await observer.tick(state, config(), now + 10 * 60_000);
+    const ended = (await readActivity(paths)).find((r) => r.kind === "session-ended");
+    const s = ended?.kind === "session-ended" ? ended.session : undefined;
+    expect(s?.promptLog?.map((p) => p.text)).toEqual(["로그인 버그 고쳐줘 token=[가림]", "이제 README도 고쳐줘 password=[가림]"]);
+    expect(s?.tools).toEqual({ edit: 1, bash: 1, read: 1 });
+    expect(s?.commandLog).toEqual(["npm test"]);
+    expect(s).toMatchObject({ model: "anthropic/claude-haiku-5-5", tokens: 1200, costUsd: 0.002, turns: 2 });
+    expect(liveView(state, config(), now + 10 * 60_000).active).toEqual([]);
+    expect(liveView(state, config(), now + 10 * 60_000).steps.sessions?.note).toContain("끝난 작업 1개 (repo)");
   });
 
   it("Agent의 세션도 읽기만 하고, Agent 앱 홈 안에서 연 세션(스케줄러)은 빼고 본다", async () => {

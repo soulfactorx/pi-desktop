@@ -1,10 +1,11 @@
-import { SESSION_APP_LABELS, TOPIC_LABELS, type InsightTopic } from "@pi-desktop/mate-runner/activity-types";
+import { TOPIC_LABELS, type InsightTopic } from "@pi-desktop/mate-runner/activity-types";
 import { useEffect, useState } from "react";
-import type { ActivityRecord, Overview } from "../shared/api";
+import type { Overview } from "../shared/api";
 import type { Act } from "./App";
 import { relativeTime } from "./mate-view";
 import { pickFolder } from "./folder-pick";
 import { SystemSection } from "./SystemSection";
+import { ActivityRow, LivePanel } from "./ActivityLive";
 
 /**
  * 활동 관찰 (설계 DESIGN-MATE.md §10, M4).
@@ -19,6 +20,9 @@ export function ActivityView({ overview, now, act }: { overview: Overview; now: 
     setQuiet(String(observe.quietMinutes));
     setLimit(String(observe.dailySuggestionLimit));
   }, [observe.quietMinutes, observe.dailySuggestionLimit]);
+  const sys = observe.system;
+  // 활동 관찰이나 시스템 관찰 중 하나라도 켜져 있으면 "지금 관찰 중"과 활동 기록을 보인다
+  const watching = observe.enabled || sys.health || sys.habits || sys.apps;
   const save = (patch: Partial<typeof observe>) => void act(() => window.mate.saveConfig({ observe: patch }));
 
   return (
@@ -42,6 +46,8 @@ export function ActivityView({ overview, now, act }: { overview: Overview; now: 
           반복은 쉬는 때 관찰자가 살펴보고 필요할 때만. 계속 버리는 주제는 덜 알립니다.
         </div>
       </div>
+
+      {watching && <LivePanel live={view.live} now={now} alive={overview.runner.alive} />}
 
       {observe.enabled && (
         <>
@@ -99,21 +105,26 @@ export function ActivityView({ overview, now, act }: { overview: Overview; now: 
             </>
           )}
 
-          <h2>최근 활동</h2>
-          {view.activity.length === 0 && (
-            <div className="muted small-text">
-              아직 기록이 없습니다. Pi Desktop·터미널 Pi·Agent로 작업하고 {observe.quietMinutes}분 쉬면 여기에 나타납니다.
-            </div>
-          )}
-          <ul className="cards">
-            {view.activity.map((record, i) => (
-              <ActivityRow key={i} record={record} now={now} />
-            ))}
-          </ul>
         </>
       )}
     </section>
     <SystemSection overview={overview} now={now} act={act} />
+    {watching && (
+      <section className="form">
+        <h2>최근 활동</h2>
+        {view.activity.length === 0 && (
+          <div className="muted small-text">
+            아직 기록이 없습니다. Pi Desktop·터미널 Pi·Agent로 작업하고 {observe.quietMinutes}분 쉬거나, 시스템 관찰에서 새로 본 것이 있으면 여기에 나타납니다.
+          </div>
+        )}
+        <ul className="cards">
+          {view.activity.map((record, i) => (
+            <ActivityRow key={i} record={record} now={now} />
+          ))}
+        </ul>
+        <div className="muted small-text">줄을 누르면 요청·쓴 도구·명령 같은 자세한 내용을 펼칩니다.</div>
+      </section>
+    )}
     </>
   );
 }
@@ -125,48 +136,6 @@ function FragmentRow({ label, children }: { label: string; children: React.React
       <span>{children}</span>
     </>
   );
-}
-
-function ActivityRow({ record, now }: { record: ActivityRecord; now: number }) {
-  if (record.kind === "session-ended") {
-    const s = record.session;
-    const folder = s.cwd.replace(/\\/g, "/").split("/").filter(Boolean).at(-1);
-    // Mate 대화는 Mate 홈의 chat 폴더에서 연다
-    const name = s.app === "mate" && folder === "chat" ? "Mate 대화" : folder;
-    return (
-      <li className="card activity">
-        <div className="card-head">
-          <span className="chip">작업 끝</span>
-          {s.app && <span className={`chip app-${s.app}`}>{SESSION_APP_LABELS[s.app]}</span>}
-          <strong className="title">{s.firstPrompt ?? "(요청 없음)"}</strong>
-          <span className="muted">
-            {name} · {relativeTime(record.at, now)}
-          </span>
-        </div>
-        <div className="duty-meta">
-          <span>요청 {s.prompts}번</span>
-          {s.editedFiles.length > 0 && <span title={s.editedFiles.join("\n")}>고친 파일 {s.editedFiles.length}개</span>}
-          {s.commands > 0 && <span>명령 {s.commands}번{s.ranTests ? " (테스트 포함)" : ""}</span>}
-          {s.failures.length > 0 && <span className="bad-text" title={s.failures.join("\n")}>실패 {s.failures.length}번</span>}
-          {s.modelErrors.length > 0 && <span className="bad-text">모델 오류: {s.modelErrors.at(-1)}</span>}
-        </div>
-      </li>
-    );
-  }
-  if (record.kind === "suggested") {
-    return (
-      <li className="card activity">
-        <div className="card-head">
-          <span className="chip sev-info">알림</span>
-          <strong className="title">{record.title}</strong>
-          <span className="muted">
-            {TOPIC_LABELS[record.topic as InsightTopic] ?? record.topic} · {relativeTime(record.at, now)}
-          </span>
-        </div>
-      </li>
-    );
-  }
-  return null;
 }
 
 function ExcludedFolders({ excluded, onChange }: { excluded: string[]; onChange: (excluded: string[]) => void }) {

@@ -1,7 +1,8 @@
 import { homedir, userInfo } from "node:os";
 import { appendChatQuestion, appendProposal, makeProposal, readChat } from "@pi-desktop/mate-kit";
 import { ASK_TOOL, PROPOSE_TOOL } from "@pi-desktop/mate-kit";
-import { readActivity, isTopicMuted, topicFeedback, OBSERVER_DUTY_ID } from "../observer";
+import { readActivity, recordActivity, isTopicMuted, topicFeedback, OBSERVER_DUTY_ID } from "../observer";
+import { liveDoing, liveStep } from "../live";
 import type { MatePaths } from "../paths";
 import { folderAlias } from "../remote/messages";
 import { localDateKey } from "../schedule";
@@ -55,12 +56,15 @@ export interface SystemWatchOptions {
   platform?: Platform;
   home?: string;
   user?: string;
+  /** 오래 걸리는 확인 전에 상태를 저장한다 (화면에 "확인 중"이 바로 보이게) */
+  save?: () => Promise<void>;
 }
 
 export class SystemWatch {
   readonly platform: Platform;
   private readonly home: string;
   private readonly user: string;
+  private readonly save: () => Promise<void>;
 
   constructor(
     private readonly paths: MatePaths,
@@ -70,6 +74,7 @@ export class SystemWatch {
     this.platform = options.platform ?? systemPlatform();
     this.home = options.home ?? homedir();
     this.user = options.user ?? safeUser();
+    this.save = options.save ?? (async () => {});
   }
 
   async tick(state: RunnerState, config: MateConfig, now: number): Promise<void> {
@@ -82,22 +87,68 @@ export class SystemWatch {
     const st = (state.system ??= emptySystemState(now));
     forgetDisabled(st, sys);
     const today = localDateKey(now);
-    if (st.today.date !== today) st.today = { date: today, count: 0 };
+    if (st.today.date !== today) {
+      // 날이 바뀌면 지난날의 셸 명령·프로그램을 한 줄씩 기록한다 (모양·이름과 횟수·시간만)
+      if (st.today.date) await this.recordDay(st, st.today.date, now);
+      st.today = { date: today, count: 0 };
+    }
     const t = mateTunables();
     const due = (at: number | undefined, minutes: number) => !at || now - at >= minutes * 60_000;
 
     if (sys.health && due(st.healthAt, t.num("system.healthIntervalMinutes"))) {
       st.healthAt = now;
-      await this.checkHealth(st, now);
-    }
+      liveDoing(state, now, "오류 로그·서비스·디스크 확인 중");
+      await this.save().catch(() => undefined);
+      const found = await this.checkHealth(st, now);
+      liveDoing(state, now, undefined);
+      const worst = st.disks.reduce((m, d) => Math.max(m, usedPercent(d)), 0);
+      liveStep(
+        state,
+        "health",
+        now,
+        st.problems.health ??
+          `새 오류 ${found.newEvents}건${found.sources.length ? ` (${found.sources.slice(0, 4).join(", ")})` : ""} · 실패 중 ${st.failed.length}개 · 디스크 ${st.disks.map((d) => `${d.mount} ${usedPercent(d)}%`).join(", ") || "-"}`,
+        { ok: !st.problems.health && worst < 90, next: now + t.num("system.healthIntervalMinutes") * 60_000 },
+      );
+      if (found.newEvents > 0 || found.newlyFailed.length > 0)
+        await recordActivity(this.paths, {
+          at: now,
+          kind: "system",
+          what: "health",
+          title: `새 오류 ${found.newEvents}건${found.newlyFailed.length ? `, 새로 실패 ${found.newlyFailed.length}개` : ""}`,
+          details: [
+            ...found.sources.map((source) => {
+              const e = st.events.find((x) => x.source === source);
+              return `${source}${e ? ` #${e.id} (${e.level === "critical" ? "위험" : "오류"}): ${e.message || "(내용 없음)"}` : ""}`;
+            }),
+            ...found.newlyFailed.map((name) => `실패: ${name}`),
+          ].slice(0, 20),
+        });
+    } else if (!sys.health) delete state.live?.steps.health;
     if (sys.habits && sys.shellHistory && due(st.historyAt, t.num("system.historyIntervalMinutes"))) {
       st.historyAt = now;
-      await this.readHistory(st, sys, now);
+      const counted = await this.readHistory(st, sys, now);
+      liveStep(state, "history", now, st.problems.history ?? `새 명령 ${counted}개 셈 (프로그램과 하위 명령만) · 오늘 ${st.shellDays[today]?.length ?? 0}개`, {
+        ok: !st.problems.history,
+        next: now + t.num("system.historyIntervalMinutes") * 60_000,
+      });
     }
     if (sys.apps && due(st.appsAt, t.num("system.appsIntervalMinutes"))) {
       const minutes = st.appsAt ? Math.min(Math.round((now - st.appsAt) / 60_000), t.num("system.appsIntervalMinutes") * 2) : t.num("system.appsIntervalMinutes");
       st.appsAt = now;
-      await this.sampleApps(st, sys, now, minutes);
+      const names = await this.sampleApps(st, sys, now, minutes);
+      liveStep(state, "apps", now, st.problems.apps ?? `켜져 있는 프로그램 ${names.length}개${names.length ? `: ${names.slice(0, 6).join(", ")}` : ""}`, {
+        ok: !st.problems.apps,
+        next: now + t.num("system.appsIntervalMinutes") * 60_000,
+      });
+    }
+    if (sys.analyze) {
+      const every = t.num("system.analysisHours") * 3_600_000;
+      const next = st.analyzedAt ? st.analyzedAt + every : st.since + Math.min(DAY, every);
+      const prev = state.live?.steps.analysis;
+      // 분석이 끝나면 데몬이 결과를 적는다. 여기서는 다음 차례만 고친다
+      // 아직 돈 적이 없으면 시각을 0으로 두어 화면에 "아직"으로 보인다
+      liveStep(state, "analysis", prev?.at ?? st.analyzedAt ?? 0, prev?.note ?? "모은 요약을 하루 한 번 모델에게 보내 제안받습니다", { ok: prev?.ok ?? true, next });
     }
     prune(st, now, t.num("system.keepDays"));
     await this.notify(st, config, now);
@@ -191,15 +242,19 @@ export class SystemWatch {
     };
   }
 
-  private async checkHealth(st: SystemWatchState, now: number): Promise<void> {
+  private async checkHealth(st: SystemWatchState, now: number): Promise<{ newEvents: number; sources: string[]; newlyFailed: string[] }> {
     // 처음에는 하루 전부터 (켜자마자 지난 오류가 쏟아지지 않게, 그래도 오늘 상태는 보이게)
     const since = st.healthCursor ?? now - DAY;
     const reading = await readHealth(this.platform, this.exec, since, this.paths.home).catch((e: Error) => ({ events: [] as RawEvent[], failed: [], problem: e.message }));
     if (reading.problem) st.problems.health = reading.problem;
     else delete st.problems.health;
     st.healthCursor = now;
+    let newEvents = 0;
+    const sources = new Set<string>();
     for (const raw of reading.events) {
       if (raw.at < since) continue;
+      newEvents++;
+      sources.add(scrubText(raw.source, this.home, this.user, 60));
       const key = `${raw.source}#${raw.id}`;
       const day = localDateKey(raw.at);
       const message = scrubText(raw.message, this.home, this.user);
@@ -215,19 +270,44 @@ export class SystemWatch {
       }
     }
     // 지금 실패해 있는 것만 남긴다 (언제부터인지는 이어 간다)
+    const beforeFailed = new Set(st.failed.map((f) => `${f.kind}:${f.name}`));
     st.failed = reading.failed.map((f) => {
       const before = st.failed.find((x) => x.name === f.name && x.kind === f.kind);
       return { ...f, name: scrubText(f.name, this.home, this.user, 80), since: before?.since ?? now, seenAt: now };
     });
     st.disks = await readDisks(this.platform, now, this.home);
+    return { newEvents, sources: [...sources], newlyFailed: st.failed.filter((f) => !beforeFailed.has(`${f.kind}:${f.name}`)).map((f) => f.name) };
   }
 
-  private async readHistory(st: SystemWatchState, sys: SystemObserveConfig, now: number): Promise<void> {
+  /** 지난날의 셸 명령(모양별 횟수)과 프로그램(켜져 있던 시간)을 활동 기록에 한 줄씩 남긴다 */
+  private async recordDay(st: SystemWatchState, day: string, now: number): Promise<void> {
+    const seq = st.shellDays[day] ?? [];
+    if (seq.length) {
+      const counts = new Map<string, number>();
+      for (const [shape, hours] of Object.entries(st.shellHours[day] ?? {})) counts.set(shape, hours.reduce((a, b) => a + b, 0));
+      const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+      await recordActivity(this.paths, { at: now, kind: "system", what: "shell-day", title: `${day} 셸 명령 ${seq.length}개 (모양 ${counts.size}가지)`, details: top.map(([shape, n]) => `${shape} ${n}회`) });
+    }
+    const apps = st.apps[day];
+    if (apps && Object.keys(apps).length) {
+      const top = topApps(apps, 10);
+      await recordActivity(this.paths, { at: now, kind: "system", what: "apps-day", title: `${day} 켜져 있던 프로그램 ${Object.keys(apps).length}개`, details: top.map((a) => `${a.name} ${hm(a.minutes)}`) });
+    }
+  }
+
+  /** 새 줄을 읽어 모양으로 센다. 센 명령 수를 돌려준다 */
+  private async readHistory(st: SystemWatchState, sys: SystemObserveConfig, now: number): Promise<number> {
     const files = await historyFiles(this.platform, this.home).catch(() => []);
     if (files.length === 0) {
       st.problems.history = "셸 기록 파일을 찾지 못했습니다 (bash·zsh·fish·PowerShell)";
-      return;
+      return 0;
     }
+    let counted = 0;
+    const add = (shape: string | undefined, at: number) => {
+      if (!shape) return;
+      counted++;
+      addShape(st, shape, at);
+    };
     delete st.problems.history;
     const keep = mateTunables().num("system.keepDays");
     for (const file of files) {
@@ -237,7 +317,7 @@ export class SystemWatch {
           // 처음: 시각이 적힌 기록만 최근 며칠 치를 읽고, 시각 없는 지난 기록은 읽지 않는다 (한날로 몰리지 않게)
           const { text, size } = await readTail(file.path, 0);
           const past = parseHistory(text, file.format).filter((c) => c.at !== undefined && c.at >= now - keep * DAY && c.at <= now);
-          for (const c of past) addShape(st, commandShape(c.command, sys.ignore), c.at!);
+          for (const c of past) add(commandShape(c.command, sys.ignore), c.at!);
           st.history[file.path] = { offset: size };
           continue;
         }
@@ -245,15 +325,17 @@ export class SystemWatch {
         entry.offset = offset;
         for (const c of parseHistory(text, file.format)) {
           const at = c.at !== undefined && c.at <= now && c.at >= now - DAY ? c.at : now;
-          addShape(st, commandShape(c.command, sys.ignore), at);
+          add(commandShape(c.command, sys.ignore), at);
         }
       } catch {
         // 못 읽은 파일은 다음에
       }
     }
+    return counted;
   }
 
-  private async sampleApps(st: SystemWatchState, sys: SystemObserveConfig, now: number, minutes: number): Promise<void> {
+  /** 켜져 있는 프로그램 이름을 센다. 이번에 센 이름을 돌려준다 */
+  private async sampleApps(st: SystemWatchState, sys: SystemObserveConfig, now: number, minutes: number): Promise<string[]> {
     const { names, problem } = await readApps(this.platform, this.exec, this.paths.home).catch((e: Error) => ({ names: [] as string[], problem: e.message }));
     if (problem) st.problems.apps = problem;
     else delete st.problems.apps;
@@ -266,6 +348,7 @@ export class SystemWatch {
     // 하루에 프로그램 60개까지 (적게 켜진 것부터 버린다)
     const entries = Object.entries(today);
     if (entries.length > 60) st.apps[day] = Object.fromEntries(entries.sort((a, b) => b[1] - a[1]).slice(0, 60));
+    return names.filter((name) => !isIgnored(name, sys.ignore));
   }
 
   /** 규칙 알림: 디스크 부족·위험 오류·반복 오류·실패한 서비스는 인박스로, 되풀이 작업은 대화로 묻는다 */
@@ -321,6 +404,7 @@ export class SystemWatch {
             const q = lines.findLast((l) => l.kind === "question" && l.text === text.trim());
             st.asked[next.key] = { at: now, ...(q ? { questionId: q.id } : {}) };
             st.today.count += 1;
+            await recordActivity(this.paths, { at: now, kind: "system", what: "habit-asked", title: `되풀이 작업을 임무로 만들지 물음: ${next.label}`, details: [text] });
           }
         }
       }
@@ -334,7 +418,10 @@ export class SystemWatch {
     const lines = await readChat(this.paths.chat);
     for (const a of waiting) {
       const reply = lines.find((l) => l.answerTo === a.questionId);
-      if (reply) a.answer = reply.text.trim().startsWith("예") ? "yes" : "no";
+      if (!reply) continue;
+      a.answer = reply.text.trim().startsWith("예") ? "yes" : "no";
+      const key = Object.entries(st.asked).find(([, v]) => v === a)?.[0] ?? "";
+      await recordActivity(this.paths, { at: reply.at, kind: "system", what: "habit-answer", title: `되풀이 작업 질문에 "${a.answer === "yes" ? "예" : "아니요"}": ${key.replace(/^(shell|pi):/, "")}` });
     }
   }
 }
