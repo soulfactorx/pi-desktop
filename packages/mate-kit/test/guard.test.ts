@@ -11,6 +11,8 @@ describe("checkCommand", () => {
     ok("git status --short");
     ok("git -C ../repo log --oneline -5");
     ok("git diff HEAD~1 | head -50");
+    ok("diff a/Dockerfile b/Dockerfile | od -c | head -20");
+    ok("cmp a.txt b.txt");
     ok("gh pr checks 12 && gh run list --limit 5");
     ok('grep -rn "a|b > c" src');
     ok("ls -la; cat package.json 2>/dev/null");

@@ -9,7 +9,7 @@ import { mateTunables } from "./tunables";
  * 질문은 앱 대화 탭과 휴대폰에 선택지 버튼으로 뜬다. "허용하고 다시 실행"을 누르면 대화 담당이
  * 임무에 허용 명령을 더하고 다시 실행한다. 답하지 않은 같은 질문은 하루 안에 다시 묻지 않는다.
  */
-export async function askPermission(paths: MatePaths, duty: Duty, runId: string, blockedPath: string, now: number, retry?: string): Promise<boolean> {
+export async function askPermission(paths: MatePaths, duty: Duty, runId: string, blockedPath: string, now: number, retry?: string, note?: string): Promise<boolean> {
   const blocked = await readBlocked(blockedPath);
   await rm(blockedPath, { force: true });
   const granted = new Set(duty.grants ?? []);
@@ -33,6 +33,7 @@ export async function askPermission(paths: MatePaths, duty: Duty, runId: string,
   }
   const where = duty.id === CHAT_DUTY_ID ? "대화에서" : "이 임무에서";
   lines.push(`${where} ${commands.map((c) => (isMcpToolName(c) ? splitMcpToolName(c).tool : isExtToolGrant(c) ? c.slice(EXT_GRANT_PREFIX.length) : c)).join(", ")}을(를) 허용할까요?`);
+  if (note) lines.push(note);
   if (bash.length) lines.push("명령은 허용해도 파일 쓰기·데이터 보내기를 여전히 막아요.");
   if (mcp.length) lines.push("MCP·확장 도구는 Mate가 읽기인지 쓰기인지 알 수 없으니 설명을 보고 정해 주세요. 허용한 도구만 다음부터 써요.");
   return appendChatQuestion(

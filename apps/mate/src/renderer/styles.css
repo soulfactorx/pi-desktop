@@ -1367,3 +1367,127 @@ ul.activity-details {
     grid-column: 1 / -1;
   }
 }
+
+/* 바뀐 내용 (DiffView): GitHub처럼 파일 머리·줄 번호·더한 줄 초록·뺀 줄 빨강 */
+.diff-view {
+  --diff-add-bg: color-mix(in srgb, var(--ok) 16%, transparent);
+  --diff-add-no: color-mix(in srgb, var(--ok) 28%, transparent);
+  --diff-del-bg: color-mix(in srgb, var(--bad) 16%, transparent);
+  --diff-del-no: color-mix(in srgb, var(--bad) 28%, transparent);
+  --diff-hunk-bg: color-mix(in srgb, var(--accent) 14%, transparent);
+  margin: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.diff-total {
+  font-size: 12px;
+}
+.diff-plus {
+  color: var(--ok);
+  font-weight: 600;
+}
+.diff-minus {
+  color: var(--bad);
+  font-weight: 600;
+}
+.diff-file {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.diff-file-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 0;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.diff-caret {
+  color: var(--muted);
+  width: 10px;
+}
+.diff-path {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  flex: 1;
+}
+.diff-counts {
+  white-space: nowrap;
+}
+.diff-body {
+  overflow-x: auto;
+  border-top: 1px solid var(--border);
+}
+.diff-body table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.diff-body td {
+  padding: 0 8px;
+  border: 0;
+  vertical-align: top;
+}
+.diff-no {
+  width: 1%;
+  min-width: 36px;
+  text-align: right;
+  color: var(--muted);
+  user-select: none;
+  white-space: nowrap;
+}
+.diff-text {
+  white-space: pre;
+}
+.diff-sign {
+  display: inline-block;
+  width: 14px;
+  color: var(--muted);
+  user-select: none;
+}
+.diff-add .diff-text {
+  background: var(--diff-add-bg);
+}
+.diff-add .diff-no {
+  background: var(--diff-add-no);
+}
+.diff-add .diff-sign {
+  color: var(--ok);
+}
+.diff-del .diff-text {
+  background: var(--diff-del-bg);
+}
+.diff-del .diff-no {
+  background: var(--diff-del-no);
+}
+.diff-del .diff-sign {
+  color: var(--bad);
+}
+.diff-hunk td {
+  background: var(--diff-hunk-bg);
+  color: var(--muted);
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.diff-meta .diff-text {
+  color: var(--muted);
+  font-style: italic;
+}
+.diff-empty,
+.diff-more {
+  padding: 6px 10px;
+  font-size: 12px;
+}

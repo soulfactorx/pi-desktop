@@ -17,7 +17,7 @@ export type CommandVerdict = { allowed: true } | { allowed: false; reason: strin
 const READ_ONLY = new Set([
   "ls", "cat", "head", "tail", "wc", "grep", "rg", "pwd", "echo", "date", "which", "whoami", "uname",
   "du", "df", "sort", "uniq", "cut", "tr", "jq", "file", "stat", "tree", "basename", "dirname", "realpath",
-  "true", "test", "diff", "cd",
+  "true", "test", "diff", "cmp", "od", "cd",
 ]);
 
 const GIT_READ = new Set([

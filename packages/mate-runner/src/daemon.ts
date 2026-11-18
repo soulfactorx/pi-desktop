@@ -102,7 +102,8 @@ async function offerChange(options: RunnerOptions, duty: Duty, runId: string, ws
     {
       title: `${duty.name}: 파일 ${n}개 고침`,
       summary: outcome.summary ?? "작업 공간에서 파일을 고쳤습니다. 내용을 보고 적용할지 정하세요.",
-      detail: `\`\`\`\n${change.stat}\n\`\`\`\n\n\`\`\`diff\n${change.patch}\n\`\`\``,
+      // 고친 파일 안에 ```가 있어도 블록이 끊기지 않게 네 개로 감싼다. 앱은 diff 블록을 색·줄 번호로 보인다 (DiffView)
+      detail: `\`\`\`\n${change.stat}\n\`\`\`\n\n\`\`\`\`diff\n${change.patch}\n\`\`\`\``,
       severity: "action",
     },
     { dutyId: duty.id, runId },
@@ -194,7 +195,9 @@ export async function runDuty(
     if (await appendProposal(paths.inbox, item)) outcome.proposals += 1;
   }
 
-  await askPermission(paths, duty, runId, blockedPath, now()).catch((error: Error) => log(paths, `permission ask error ${error.message}`));
+  // 막힌 명령이 있어도 이미 고친 변경을 올렸으면, 다시 실행하지 않아도 된다고 알린다 (같은 일을 두 번 하지 않게)
+  const offered = outcome.changeFiles ? `이 실행은 이미 파일 ${outcome.changeFiles}개를 고쳐 인박스에 올렸어요. 그 변경으로 충분하면 "허용하지 않음"을 눌러도 돼요 (다시 실행하면 같은 일을 처음부터 다시 해요).` : undefined;
+  await askPermission(paths, duty, runId, blockedPath, now(), undefined, offered).catch((error: Error) => log(paths, `permission ask error ${error.message}`));
 
   const sessionFile = outcome.sessionId ? await findSessionFile(paths, outcome.sessionId) : undefined;
   const finished: RunRecord = {

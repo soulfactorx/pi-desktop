@@ -17,11 +17,24 @@ export function scrubLines(text: string, home: string, user: string, limit = 150
   return out.length > limit ? `${out.slice(0, limit)}…` : out;
 }
 
+/**
+ * 로그 출처 이름(Windows 이벤트 공급자, 유닛 이름). 비밀값이 아니므로 긴 이름을 가리지 않는다
+ * ("Microsoft-Windows-CertificateServicesClient-CertEnroll"이 긴 토큰으로 보여 [가림]이 되던 문제).
+ */
+export function scrubSource(text: string, home: string, user: string, limit = 60): string {
+  let out = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (home) out = out.split(home).join("~");
+  if (user && user.length >= 3) out = out.replace(new RegExp(escapeRegExp(user), "gi"), "<사용자>");
+  return out.length > limit ? `${out.slice(0, limit)}…` : out;
+}
+
 export function scrubText(text: string, home: string, user: string, limit = 160): string {
   let out = redact(String(text ?? "").replace(/\s+/g, " ").trim()).replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, "<메일>");
   if (home) out = out.split(home).join("~").split(home.replace(/\\/g, "/")).join("~");
   if (user && user.length >= 3) out = out.replace(new RegExp(escapeRegExp(user), "gi"), "<사용자>");
   out = out
+    // 도메인\컴퓨터 계정 (SKCC\PC-NAME$)
+    .replace(/[\w.-]+\\[\w.-]+\$/g, "<컴퓨터 계정>")
     .replace(/\b(\d{1,3}\.){3}\d{1,3}\b/g, "<IP>")
     .replace(/\b([0-9a-f]{1,4}:){3,7}[0-9a-f]{1,4}\b/gi, "<IP>")
     .replace(/\b(https?:\/\/[^/\s?#]+)[^\s]*/gi, "$1/…")

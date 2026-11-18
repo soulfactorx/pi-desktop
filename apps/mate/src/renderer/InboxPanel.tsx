@@ -71,7 +71,8 @@ async function delegateItem(item: InboxView): Promise<void> {
 }
 
 export function InboxCard({ item, now, act, onAsk }: { item: InboxView; now: number; act: Act; onAsk?: () => void }) {
-  const [open, setOpen] = useState(false);
+  // 고친 변경은 적용 전에 내용을 봐야 하므로 diff를 펼쳐 둔다
+  const [open, setOpen] = useState(Boolean(item.change && !item.status));
   /** 설치 제안이면 적용하기 전에 무엇이 들어가는지 보인다 (스킬 내용, 서버 명령, 복사할 원본) */
   const [preview, setPreview] = useState<string>();
   useEffect(() => {

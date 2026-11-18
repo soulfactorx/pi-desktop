@@ -82,3 +82,11 @@ describe("시스템 오류 제안의 자세히 보기", () => {
     expect(text).toContain("Mate에게 자세히 묻기");
   });
 });
+
+describe("시스템 로그 가리기", () => {
+  it("긴 공급자 이름은 가리지 않고, 도메인\\컴퓨터 계정은 가린다", async () => {
+    const { scrubSource, scrubText } = await import("../src/system/privacy");
+    expect(scrubSource("Microsoft-Windows-CertificateServicesClient-CertEnroll", "C:\\Users\\kim", "kim")).toBe("Microsoft-Windows-CertificateServicesClient-CertEnroll");
+    expect(scrubText("통한 SKCC\\SKAX26N00713$의 SCEP 인증서 등록 실패", "C:\\Users\\kim", "kim")).toBe("통한 <컴퓨터 계정>의 SCEP 인증서 등록 실패");
+  });
+});
