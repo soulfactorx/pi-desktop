@@ -10,7 +10,7 @@ import { mateDefault, mateTunables } from "../tunables";
 import type { Duty, MateConfig, RunnerState } from "../types";
 import type { Exec } from "../watchers";
 import { piHabits, shellHabits, whenPhrase } from "./habits";
-import { commandShape, scrubLines, scrubText } from "./privacy";
+import { commandShape, scrubLines, scrubSource, scrubText } from "./privacy";
 import { historyFiles, parseHistory, readApps, readDisks, readHealth, readTail, systemPlatform, type Platform, type RawEvent } from "./sources";
 import { type EventSummary, type HabitCandidate, type SystemObserveConfig, type SystemView, type SystemWatchState } from "./types";
 
@@ -257,7 +257,7 @@ export class SystemWatch {
     for (const raw of reading.events) {
       if (raw.at < since) continue;
       newEvents++;
-      sources.add(scrubText(raw.source, this.home, this.user, 60));
+      sources.add(scrubSource(raw.source, this.home, this.user));
       const key = `${raw.source}#${raw.id}`;
       const day = localDateKey(raw.at);
       const message = scrubText(raw.message, this.home, this.user);
@@ -274,7 +274,7 @@ export class SystemWatch {
         found.lastAt = Math.max(found.lastAt, raw.at);
         if (raw.level === "critical") found.level = "critical";
       } else {
-        st.events.push({ key, source: scrubText(raw.source, this.home, this.user, 60), id: raw.id, level: raw.level, message, ...(detail ? { detail } : {}), days: { [day]: 1 }, firstAt: raw.at, lastAt: raw.at });
+        st.events.push({ key, source: scrubSource(raw.source, this.home, this.user), id: raw.id, level: raw.level, message, ...(detail ? { detail } : {}), days: { [day]: 1 }, firstAt: raw.at, lastAt: raw.at });
       }
     }
     // 지금 실패해 있는 것만 남긴다 (언제부터인지는 이어 간다)
