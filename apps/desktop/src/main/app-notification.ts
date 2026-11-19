@@ -1,4 +1,5 @@
-import { Notification } from "electron";
+import { BrowserWindow, Notification } from "electron";
+import { pendingAlerts } from "./pending-alerts";
 
 /**
  * OS 알림과, 알림을 눌렀을 때 갈 곳 (Agent·Mate 작업 공간의 알림).
@@ -83,8 +84,11 @@ export function showAppNotification(options: { title: string; body: string; sile
   });
   kept.add(notification);
   if (kept.size > KEEP_MAX) kept.delete(kept.values().next().value!);
+  // 앱 창을 보고 있지 않으면 트레이에 "새 알림"으로 남긴다 (pending-alerts.ts, tray.ts)
+  const pending = BrowserWindow.getFocusedWindow() ? undefined : pendingAlerts.add({ title, body, ...(route ? { route } : {}), at: Date.now() });
   notification.on("click", () => {
     kept.delete(notification);
+    if (pending) pendingAlerts.remove(pending.id);
     onClick();
   });
   notification.show();
