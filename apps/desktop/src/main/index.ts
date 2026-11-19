@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, screen, shell, type MenuItemConstructorOptions } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, screen, shell, type MenuItemConstructorOptions } from "electron";
+import { pendingAlerts } from "./pending-alerts";
 import { existsSync as fileExists, writeFileSync as writeFlag } from "node:fs";
 import { createAppTray, type AppTray } from "./tray";
 import { loadWindowState, trackWindowState } from "@pi-desktop/window-state";
@@ -103,6 +104,8 @@ function createWindow(): void {
   mainWindow.on("focus", () => {
     setAppMenu();
     workspaces.focused();
+    // 앱 창으로 돌아오면 트레이의 새 알림을 본 것으로 친다
+    pendingAlerts.clear();
   });
 
   // 응답 속 링크가 앱 창을 다른 페이지로 바꾸지 않게 한다. http(s) 링크만 외부 브라우저로 연다.
@@ -198,6 +201,7 @@ function openWorkspaceWindow(id: PluginWorkspaceId): void {
   win.on("focus", () => {
     setAppMenu({ id, win });
     workspaces.focused(id);
+    pendingAlerts.clear();
   });
   workspaces.attachWindow(id, win);
   void win.loadFile(join(here, "../renderer", id, "index.html"));
@@ -379,15 +383,23 @@ app.whenReady().then(() => {
   if (runnerOnlyLaunch) void workspaces.loginLaunch().catch(() => undefined);
   else createWindow();
   // 트레이: Mate 실행기 상태를 보이고, 창을 닫아도 앱은 여기에 남는다 (tray.ts)
-  appTray = createAppTray(app.isPackaged ? join(process.resourcesPath, "icon.png") : join(app.getAppPath(), "build", "icon.png"), {
+  appTray = createAppTray(resourceFile("icon.png"), {
     open: () => {
       if (!revealWindow(mainWindow)) createWindow();
     },
     openMate: (tab) => workspaces.openRoute({ workspace: "mate", tab }),
     startMate: () => workspaces.ensureMateRunner().then(() => appTray?.refresh()),
     mateStatus: () => workspaces.mateStatus(),
+    openRoute: (route) => workspaces.openRoute(route),
+    // 작업 표시줄에도 새 알림을 보인다 (Windows: 아이콘에 빨간 점, macOS·Linux: 앱 배지 수)
+    alertsChanged: (count) => {
+      app.setBadgeCount(count);
+      if (process.platform === "win32" && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setOverlayIcon(count > 0 ? nativeImage.createFromPath(resourceFile("alert-dot.png")) : null, count > 0 ? `새 알림 ${count}건` : "");
+      }
+    },
     quit: () => app.quit(),
-  });
+  }, resourceFile("tray-alert.png"));
   // 알림 센터의 알림을 누르면 Windows가 앱 주소로 이 앱을 연다 (Agent·Mate 알림, app-notification.ts). 설치본만 등록한다
   if (process.platform === "win32" && app.isPackaged && !app.isDefaultProtocolClient(APP_PROTOCOL)) app.setAsDefaultProtocolClient(APP_PROTOCOL);
   // 앱이 꺼져 있을 때 알림을 눌러 열렸으면 그 화면으로 간다 (작업 공간 화면이 뜬 뒤)
@@ -420,6 +432,11 @@ app.on("window-all-closed", () => {
   if (appTray) return trayNoticeOnce();
   app.quit();
 });
+
+/** 앱에 딸린 그림 파일 (설치본은 resources, 개발 중에는 build 폴더) */
+function resourceFile(name: string): string {
+  return app.isPackaged ? join(process.resourcesPath, name) : join(app.getAppPath(), "build", name);
+}
 
 /** 처음 창을 닫았을 때 한 번만, 트레이에 남았다고 알린다 */
 function trayNoticeOnce(): void {

@@ -188,6 +188,7 @@ interface PiDesktopPlugin {
   - 창을 닫아도 앱은 트레이에 남는다 (처음 한 번 알림으로 알린다). 끝내기는 트레이 메뉴. 앱을 끝내도 Mate 실행기는 따로 계속 돈다.
   - 로그인할 때 뜬 실행(`--mate-runner-only`)은 이제 끝나지 않고 **창 없이 트레이에만** 뜬다. 단일 인스턴스 잠금을 잡으므로, 그 뒤 사용자가 앱을 열면 second-instance로 창을 연다. 이미 앱이 떠 있으면 로그인 실행은 바로 끝난다.
   - 트레이에만 있을 때 알림·트레이 메뉴로 작업 공간을 열면 창부터 연다 (`WorkspaceHost.openWindow`).
+  - **새 알림 표시** (`main/pending-alerts.ts`): 앱 창을 보지 않을 때 띄운 OS 알림(Pi 탭 소식·Agent·Mate, 모두 `showAppNotification`)을 모아 둔다. 있으면 트레이 아이콘이 빨간 점 아이콘(`build/tray-alert.png`)으로 바뀌고, 툴팁에 "새 알림 N건", 메뉴 맨 위에 최근 5건(누르면 그 화면으로 가며 읽음)과 "알림 모두 읽음"이 생긴다. 작업 표시줄에도 Windows는 빨간 점 덧씌움(`build/alert-dot.png`), macOS·Linux는 앱 배지 수로 보인다. 앱 창(또는 새 창으로 연 작업 공간 창)으로 돌아오거나 알림을 누르면 지운다. 목록은 20건까지, 수는 모두 센다.
 
 ---
 
