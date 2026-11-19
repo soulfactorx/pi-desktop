@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import type { LaunchSpec } from "./host-connection";
+import { nodePathPrefix } from "@pi-desktop/host-deploy";
 import { deployAgent, runCommand, shQuote } from "./remote-agent";
 
 /**
@@ -66,7 +67,7 @@ export async function prepareWsl(options: WslPrepareOptions): Promise<LaunchSpec
   });
   return {
     command: WSL_EXE,
-    args: ["-d", options.distro, "--cd", "~", "--exec", "sh", "-c", `exec ${shQuote(deployed.node)} ${shQuote(deployed.remotePath)} connect`],
+    args: ["-d", options.distro, "--cd", "~", "--exec", "sh", "-c", `${nodePathPrefix(deployed.node)}exec ${shQuote(deployed.node)} ${shQuote(deployed.remotePath)} connect`],
     agentBuild: deployed.agentBuild,
   };
 }

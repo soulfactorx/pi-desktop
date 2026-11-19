@@ -60,19 +60,46 @@ export function bundleFileName(prefix: string, version: string, bundle: Buffer):
 }
 
 /**
+ * 원격에서 node를 찾아 NODE 변수에 넣는 셸 조각 (POSIX sh).
+ *
+ * ssh로 명령만 실행하면(비대화형) 로그인 셸 설정(.bashrc)을 읽지 않는다. 그래서 nvm·fnm·volta 같은 버전 관리자나
+ * .bashrc에서 PATH를 더한 Node는 `command -v node`로 보이지 않는다 (터미널로 접속하면 보이는데 앱에서는 못 찾는 이유).
+ * 차례로: PATH → Pi 설치기의 Node → 버전 관리자·흔한 설치 위치 → 대화형 셸(.bashrc를 읽음)에 물어보기.
+ */
+export const FIND_NODE = [
+  'NODE="$(command -v node 2>/dev/null || true)"',
+  'pd_newest() { ls -d $1 2>/dev/null | sort -V 2>/dev/null | tail -n 1; }',
+  'if [ -z "$NODE" ]; then for c in "${XDG_DATA_HOME:-$HOME/.local/share}/pi-node/current/bin/node" "$HOME/.volta/bin/node" "$HOME/.local/share/mise/shims/node" "$HOME/.asdf/shims/node" "$HOME/n/bin/node" "$HOME/.local/bin/node" /usr/local/bin/node /usr/bin/node /opt/node/bin/node /opt/nodejs/bin/node; do if [ -x "$c" ]; then NODE="$c"; break; fi; done; fi',
+  'if [ -z "$NODE" ]; then NODE="$(pd_newest "${NVM_DIR:-$HOME/.nvm}/versions/node/v*/bin/node")"; fi',
+  'if [ -z "$NODE" ]; then NODE="$(pd_newest "${XDG_DATA_HOME:-$HOME/.local/share}/fnm/node-versions/v*/installation/bin/node")"; fi',
+  'if [ -z "$NODE" ]; then NODE="$(pd_newest "$HOME/.fnm/node-versions/v*/installation/bin/node")"; fi',
+  'if [ -z "$NODE" ]; then NODE="$(pd_newest "/usr/local/lib/nodejs/node-v*/bin/node")"; fi',
+  // 마지막으로 대화형 셸에 묻는다 (.bashrc를 읽는다). 셸 설정이 멈추지 않게 입력을 막고 시간을 정한다
+  'if [ -z "$NODE" ]; then PD_T=""; if command -v timeout >/dev/null 2>&1; then PD_T="timeout 15"; fi; for sh in bash zsh; do command -v "$sh" >/dev/null 2>&1 || continue; c="$($PD_T "$sh" -ic "command -v node" </dev/null 2>/dev/null | tail -n 1)"; case "$c" in /*) if [ -x "$c" ]; then NODE="$c"; break; fi;; esac; done; fi',
+].join("\n");
+
+/**
  * 원격에서 node와 Agent 파일을 확인하는 스크립트.
- * PATH에 node가 없으면 Pi 공식 설치기가 깐 Node(pi-node)를 쓴다.
  */
 /** @param dir 홈 기준 번들 폴더 (예: .pi-desktop-agent/agent) */
 export function probeScript(file: string, dir: string): string {
   return [
-    'NODE="$(command -v node 2>/dev/null || true)"',
-    'if [ -z "$NODE" ] && [ -x "$HOME/.local/share/pi-node/current/bin/node" ]; then NODE="$HOME/.local/share/pi-node/current/bin/node"; fi',
+    FIND_NODE,
     'printf "pi-desktop-home=%s\\n" "$HOME"',
     'printf "pi-desktop-node=%s\\n" "$NODE"',
     'if [ -n "$NODE" ]; then printf "pi-desktop-nodeVersion=%s\\n" "$("$NODE" -v)"; fi',
     `if [ -f "$HOME/${dir}/${file}" ]; then echo pi-desktop-agent=1; else echo pi-desktop-agent=0; fi`,
   ].join("\n");
+}
+
+/**
+ * 찾은 node의 폴더를 PATH 앞에 두는 셸 조각. 실행기·Agent가 npm·pi를 PATH로 찾으므로,
+ * .bashrc에서만 PATH에 들어가는 Node(nvm 등)도 쓸 수 있게 한다.
+ */
+export function nodePathPrefix(node: string): string {
+  const slash = node.lastIndexOf("/");
+  if (slash <= 0) return "";
+  return `PATH=${shQuote(node.slice(0, slash))}:"$PATH"; export PATH; `;
 }
 
 /** 호스트에서 셸 스크립트를 실행하는 방법 (stdin으로 바이트를 넘길 수 있다). 실패하면 예외 */

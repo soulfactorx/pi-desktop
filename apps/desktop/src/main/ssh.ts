@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { SshHostConfig } from "../shared/api";
 import type { LaunchSpec } from "./host-connection";
+import { nodePathPrefix } from "@pi-desktop/host-deploy";
 import { deployAgent, runCommand, shQuote } from "./remote-agent";
 
 /**
@@ -86,7 +87,7 @@ export async function prepareSsh(options: SshPrepareOptions): Promise<LaunchSpec
   });
   return {
     command: ssh,
-    args: [...sshArgs(options.host), remoteSh(`exec ${shQuote(deployed.node)} ${shQuote(deployed.remotePath)} connect`)],
+    args: [...sshArgs(options.host), remoteSh(`${nodePathPrefix(deployed.node)}exec ${shQuote(deployed.node)} ${shQuote(deployed.remotePath)} connect`)],
     agentBuild: deployed.agentBuild,
   };
 }
