@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { ChatView } from "../../../desktop/src/renderer/ChatView";
+import { withQuote } from "../../../desktop/src/renderer/quote-text";
 import { StatusLine, Widgets } from "../../../desktop/src/renderer/ExtensionUi";
 import { acceptsImages, splitAttachments, withAttachments } from "./attachments";
 import { useAppNumber } from "./app-number";
@@ -341,7 +342,7 @@ export function ChatPage({
           </div>
         </div>
       ) : (
-        <ChatView items={chat.items} running={chat.running} onResend={setDraft} actions={{}} />
+        <ChatView items={chat.items} running={chat.running} onResend={setDraft} onQuote={(text) => setDraft((prev) => withQuote(prev, text))} actions={{}} />
       )}
 
       {lost && connected && (

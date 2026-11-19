@@ -3279,3 +3279,24 @@ details > summary.settings-section {
 .msg.user .msg-meta {
   text-align: right;
 }
+
+/* 대화에서 고른 글을 인용해 다시 묻는 단추 (QuoteAsk) */
+.quote-ask {
+  position: fixed;
+  z-index: 1000;
+  padding: 5px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.quote-ask:hover {
+  background: var(--accent);
+  color: #fff;
+}

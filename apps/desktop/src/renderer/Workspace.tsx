@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ResizeHandle } from "./ResizeHandle";
 import type { ConfiguredPackageInfo, StoredSession } from "@pi-desktop/host-protocol/messages";
 import type { PendingQueue } from "./chat-state";
+import { withQuote } from "./quote-text";
 import { ChatView } from "./ChatView";
 import { ChoiceDialog } from "./ChoiceDialog";
 import { SessionBinDialog } from "./SessionBinDialog";
@@ -1307,6 +1308,7 @@ export function Workspace({ tabId, active, onStatus, appCommands }: WorkspacePro
         items={chat.items}
         running={chat.running}
         onResend={(text) => setDraft(text)}
+        onQuote={(text) => setDraft(withQuote(draft, text))}
         actions={{
           onAbortBash: () => void guardQuiet(() => send({ type: "abort_bash" })),
           // 탐색기에서 볼 수 있는 호스트(로컬, WSL)만

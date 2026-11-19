@@ -5,6 +5,7 @@ import { Markdown } from "./markdown/Markdown";
 import { resendCandidate } from "./run-status";
 import { ToolCard, type ToolCardActions } from "./ToolCards";
 import { ChatNavigator } from "./ChatNavigator";
+import { QuoteAsk } from "./QuoteAsk";
 
 /** 대화 목록. 새 내용이 오면 사용자가 위로 스크롤해 둔 경우가 아니면 맨 아래로 따라간다. */
 export function ChatView({
@@ -12,12 +13,15 @@ export function ChatView({
   running,
   actions,
   onResend,
+  onQuote,
 }: {
   items: ChatItem[];
   running: boolean;
   actions: ToolCardActions;
   /** 오류로 끝난 마지막 응답의 질문을 입력창에 다시 채운다 */
   onResend?: (text: string) => void;
+  /** 대화에서 고른 글을 입력창에 인용으로 넣는다 ("이 부분 묻기") */
+  onQuote?: (text: string) => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -48,6 +52,7 @@ export function ChatView({
       ))}
       {running && <div className="working">Pi가 작업 중…</div>}
       <ChatNavigator scroller={scroller} turnSelector=".msg.user" />
+      {onQuote && <QuoteAsk root={scroller} onQuote={onQuote} />}
     </div>
   );
 }
