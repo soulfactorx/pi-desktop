@@ -7,6 +7,8 @@ import { costLabel, formatTokens, relativeTime } from "./mate-view";
 import { canReadClipboard, enterHint, isSendKey, readBase64, readClipboardImages, transferFiles, useDraftImages, useSharedImages, isWebClient } from "./clipboard-images";
 import { ImagePasteBox } from "./ImagePasteBox";
 import { ChatNavigator } from "./ChatNavigator";
+import { QuoteAsk } from "./QuoteAsk";
+import { withQuote } from "./quote-text";
 import { ComposerGrip, useComposerSize } from "./composer-size";
 import { useDraftText } from "./draft-text";
 
@@ -188,6 +190,7 @@ export function ChatView({ overview, now, act }: { overview: Overview; now: numb
         {chat.pending > 0 && !chat.busy && <div className="chat-busy muted">맡긴 일 {chat.pending}건이 끝나면 결과를 알려 드릴게요.</div>}
         <div ref={bottom} />
         <ChatNavigator scroller={log} turnSelector=".bubble.user" textSelector=".bubble-text" />
+        <QuoteAsk root={log} onQuote={(quoted) => setText((prev) => withQuote(prev, quoted))} />
       </div>
       <div className="chat-input">
         {answerTo && (
