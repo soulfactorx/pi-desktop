@@ -83,6 +83,8 @@ function DutyCard({ duty, now, paused, act, onEdit }: { duty: DutyView; now: num
         <strong className="title">{duty.name}</strong>
         <span className="chip">{PROFILE_LABELS[duty.profile].name}</span>
         <span className="muted">{triggerLabel(duty.trigger)}</span>
+        {duty.running && <span className="chip ok">실행 중</span>}
+        {duty.queued && <span className="chip warn" title="앞의 실행이 끝나면 돕니다 (동시에 도는 임무 수는 설정 탭의 '동시에 도는 임무 수')">{duty.running ? "한 번 더 대기" : "대기 중"}</span>}
       </div>
       <div className="muted path" title={duty.cwd}>
         {duty.cwd}

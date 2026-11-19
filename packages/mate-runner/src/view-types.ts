@@ -14,7 +14,10 @@ export interface DutyView extends Duty {
   lastStatus?: RunStatus;
   nextRunAt?: number;
   /** "지금 실행"을 눌러 실행기를 기다리는 중 */
+  /** "지금 실행"을 눌러 차례를 기다리는 중 */
   queued: boolean;
+  /** 지금 도는 중 */
+  running?: boolean;
   /** 변화 계기: 감지해서 실행을 기다리는 변화 */
   pendingChange?: { cause: string; since: number };
 }
@@ -37,6 +40,8 @@ export interface RunnerView {
   pid?: number;
   heartbeatAt?: number;
   current?: RunnerState["current"];
+  /** 지금 도는 실행들 */
+  running?: RunnerState["running"];
   today: RunnerState["today"];
   /** 휴대폰 연결(텔레그램)이 켜져 있다. 토큰이 있어도 원격 실행기가 다시 뜬 뒤 앱이 붙기 전에는 꺼져 있다 */
   phone?: boolean;

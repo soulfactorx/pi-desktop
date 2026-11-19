@@ -199,6 +199,13 @@ export interface WatchState {
   };
 }
 
+export interface RunningRun {
+  runId: string;
+  dutyId: string;
+  startedAt: number;
+  cause?: string;
+}
+
 export interface RunnerState {
   pid?: number;
   /** 실행기 번들의 해시. 앱이 자기 번들과 다르면 실행기를 바꾼다 */
@@ -208,7 +215,12 @@ export interface RunnerState {
   duties: Record<string, { lastRunAt?: number; lastStatus?: RunStatus; watch?: WatchState }>;
   /** 오늘(로컬 날짜) 자동 실행 수와 비용 (지금 실행 포함한 비용) */
   today: { date: string; count: number; costUsd?: number };
-  current?: { runId: string; dutyId: string; startedAt: number; cause?: string };
+  /** 가장 최근에 시작한 실행 (옛 화면·실행기 교체 판단용). 도는 실행 전부는 running */
+  current?: RunningRun;
+  /** 지금 도는 실행들 (임무를 동시에 돌린다, runner.maxParallel까지) */
+  running?: RunningRun[];
+  /** "지금 실행"을 눌렀지만 아직 띄우지 않은 임무 id (상한이 찼거나 같은 임무가 도는 중) */
+  waiting?: string[];
   /** 활동 관찰 (M4) */
   observer?: ObserverState;
   /** 시스템 관찰 (§10.1) */

@@ -51,7 +51,7 @@ async function ensureStarted(): Promise<{ status: "running" | "started" | "faile
   if (isAlive(pid)) {
     const state = await loadState(paths);
     const build = await fileHash(script);
-    if (state.build === build || state.current) return { status: "running", pid, replaced: false };
+    if (state.build === build || state.current || state.running?.length) return { status: "running", pid, replaced: false };
     await log(paths, `runner replace pid=${pid} build=${state.build}→${build}`);
     await killRunner(paths, pid!);
   }
@@ -88,6 +88,7 @@ async function daemon(): Promise<void> {
           pid: process.pid,
           ...(state.heartbeatAt ? { heartbeatAt: state.heartbeatAt } : {}),
           ...(state.current ? { current: state.current } : {}),
+          ...(state.running?.length ? { running: state.running } : {}),
           today: state.today,
           phone: runner.phoneActive,
         };

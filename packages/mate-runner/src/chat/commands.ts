@@ -63,7 +63,7 @@ export async function statusText(paths: MatePaths): Promise<string> {
   const [config, state, fresh] = await Promise.all([loadConfig(paths), loadState(paths), freshItems(paths)]);
   const cost = state.today.costUsd ? ` · 오늘 비용 $${state.today.costUsd.toFixed(3)}` : "";
   return [
-    `실행기: 동작 중${state.current ? ` (지금 실행 중: ${state.current.dutyId})` : ""}`,
+    `실행기: 동작 중${state.running?.length || state.current ? ` (지금 실행 중: ${(state.running ?? [state.current!]).map((r) => r.dutyId).join(", ")})` : ""}`,
     `오늘 자동 실행 ${state.today.count}/${config.dailyRunLimit}회${cost}`,
     `새 제안 ${fresh.length}건${config.paused ? " · 일시 정지 중" : ""}`,
     `모델: ${config.model || "Pi 기본 모델"}`,

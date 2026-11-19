@@ -1,3 +1,4 @@
+import type { RunnerState } from "../types";
 import { DO_TOOL, readChat, type ChatLine } from "@pi-desktop/mate-kit";
 import type { MatePaths } from "../paths";
 import { folderAlias } from "../remote/messages";
@@ -55,7 +56,7 @@ export async function chatPromptParts(paths: MatePaths, now: number): Promise<Ch
   put("mate_status", [
     "(mate_로 시작하는 섹션은 Mate의 지금 상태다. 차례마다 바뀐 섹션만 새로 오며, 가장 나중에 받은 것이 지금 상태다)",
     `지금: ${new Date(now).toLocaleString("ko-KR", { year: "numeric", month: "numeric", day: "numeric", weekday: "short", hour: "numeric", minute: "2-digit" })}`,
-    `상태: ${config.paused ? "일시 정지 중" : "동작 중"} · 오늘 자동 실행 ${state.today.count}/${config.dailyRunLimit}회 · 활동 관찰 ${config.observe.enabled ? "켜짐" : "꺼짐"} · 웹 검색 ${webText}${state.current ? ` · 지금 실행 중: ${state.current.dutyId}` : ""}`,
+    `상태: ${config.paused ? "일시 정지 중" : "동작 중"} · 오늘 자동 실행 ${state.today.count}/${config.dailyRunLimit}회 · 활동 관찰 ${config.observe.enabled ? "켜짐" : "꺼짐"} · 웹 검색 ${webText}${runningText(state)}`,
   ]);
   put("mate_duties", [
     "임무:",
@@ -131,4 +132,11 @@ export function dutyLogLine(e: DutyLogEntry, clip: (s: string, n: number) => str
   if (e.changes.length === 0) return head;
   const parts = e.changes.map((c) => (c.field === "지시" ? `지시: "${clip(c.before ?? "", 200)}" → "${clip(c.after ?? "", 300)}"` : `${c.field}: ${clip(c.before ?? "없음", 80)} → ${clip(c.after ?? "없음", 80)}`));
   return `${head} — ${parts.join(" / ")}`;
+}
+
+/** 대화 안내의 "지금 실행 중"과 "기다리는 중" */
+function runningText(state: RunnerState): string {
+  const running = (state.running ?? (state.current ? [state.current] : [])).map((r) => r.dutyId);
+  const waiting = state.waiting ?? [];
+  return `${running.length ? ` · 지금 실행 중: ${running.join(", ")}` : ""}${waiting.length ? ` · 실행 대기: ${waiting.join(", ")}` : ""}`;
 }

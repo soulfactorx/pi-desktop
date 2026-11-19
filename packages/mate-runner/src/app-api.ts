@@ -102,7 +102,8 @@ export function mateAppApi(ctx: MateAppContext): MateAppApi {
     const [activity, feedback, chatLines, chatState] = await Promise.all([readActivity(paths, 150), topicFeedback(paths), readChat(paths.chat), loadChatState(paths)]);
     const now = Date.now();
     const names = new Map<string, string>([[OBSERVER_DUTY_ID, OBSERVER_NAME], ...duties.map((d) => [d.id, d.name] as [string, string])]);
-    const queued = new Set(requests.map((r) => r.dutyId));
+    const queued = new Set([...requests.map((r) => r.dutyId), ...(state.waiting ?? [])]);
+    const running = new Set((state.running ?? (state.current ? [state.current] : [])).map((r) => r.dutyId));
     return {
       home: paths.home,
       chat: {
@@ -122,6 +123,7 @@ export function mateAppApi(ctx: MateAppContext): MateAppApi {
           ...(next !== undefined ? { nextRunAt: next } : {}),
           ...(pending ? { pendingChange: { cause: pending.cause, since: pending.since } } : {}),
           queued: queued.has(duty.id),
+          ...(running.has(duty.id) ? { running: true } : {}),
         };
       }),
       inbox: items
