@@ -31,11 +31,16 @@ import {
   takeRequests,
   writeRun,
 } from "./store";
-import { isChangeTrigger, type Duty, type RunRecord, type RunnerState } from "./types";
+import { isChangeTrigger, type Duty, type MateConfig, type RunRecord, type RunnerState } from "./types";
 import { mateDefault, mateTunables } from "./tunables";
 
 // 테스트에서는 PI_DESKTOP_MATE_TICK_MS로 줄인다
 const TICK_MS = Number(process.env.PI_DESKTOP_MATE_TICK_MS) || mateDefault<number>("runner.tickMs");
+
+/** 동시에 도는 임무 수의 상한 (설정 runner.maxParallel) */
+function maxParallel(): number {
+  return Math.max(1, Math.floor(mateTunables().num("runner.maxParallel")));
+}
 
 export interface RunnerOptions {
   paths: MatePaths;
@@ -47,6 +52,8 @@ export interface RunnerOptions {
   now?: () => number;
   /** 변화 계기의 git·poll 명령 실행 (테스트에서 바꿔 끼움) */
   exec?: Exec;
+  /** Pi 실행 (테스트에서 바꿔 끼움) */
+  runPi?: typeof runPi;
 }
 
 interface Pick {
@@ -157,7 +164,7 @@ export async function runDuty(
     // act는 사용자 폴더 대신 별도 작업 공간에서 돈다
     if (duty.profile === "act") workspace = await prepareWorkspace(exec, duty.cwd, paths.worktrees, runId);
     const [launch, extensions] = await Promise.all([options.locatePi(), extensionEntries(options.kitDir)]);
-    outcome = await runPi(
+    outcome = await (options.runPi ?? runPi)(
       launch,
       {
         duty,
@@ -226,6 +233,10 @@ export class Runner {
   private abort = new AbortController();
   /** "지금 실행" 요청 중 아직 실행하지 않은 임무 */
   private queue: string[] = [];
+  /** 지금 도는 임무 (임무 id → 실행). 같은 임무는 한 번에 하나만 돈다 */
+  private running = new Map<string, Promise<void>>();
+  /** 상태 파일 쓰기를 차례로 한다 (동시에 도는 실행이 함께 쓰므로. Windows는 겹친 이름 바꾸기가 실패한다) */
+  private saving: Promise<void> = Promise.resolve();
   private readonly watchers: ChangeWatchers;
   private readonly observer: Observer;
   private readonly system: SystemWatch;
@@ -236,7 +247,7 @@ export class Runner {
   constructor(private readonly options: RunnerOptions) {
     this.watchers = new ChangeWatchers(options.exec, (message) => void log(options.paths, message));
     this.observer = new Observer(options.paths, options.exec ?? execCommand);
-    this.system = new SystemWatch(options.paths, options.exec ?? execCommand, { save: () => saveState(options.paths, this.state) });
+    this.system = new SystemWatch(options.paths, options.exec ?? execCommand, { save: () => this.save() });
   }
 
   private now(): number {
@@ -252,6 +263,8 @@ export class Runner {
     const interrupted = await markInterruptedRuns(paths, this.now()).catch(() => []);
     for (const run of interrupted) await log(paths, `run interrupted ${run.id} duty=${run.dutyId}`);
     delete this.state.current;
+    delete this.state.running;
+    delete this.state.waiting;
     this.state = { ...this.state, pid: process.pid, build: this.options.build, startedAt: this.now(), heartbeatAt: this.now() };
     await saveState(paths, this.state);
     await log(paths, `runner start pid=${process.pid}`);
@@ -302,9 +315,16 @@ export class Runner {
     await log(this.options.paths, `runner stop pid=${process.pid}`);
   }
 
+  /** 상태 파일을 쓴다 (앞선 쓰기가 끝난 뒤에) */
+  private save(): Promise<void> {
+    const { paths } = this.options;
+    this.saving = this.saving.then(() => saveState(paths, this.state)).catch((error: Error) => log(paths, `state save error ${error.message}`));
+    return this.saving;
+  }
+
   /**
-   * 할 일이 없을 때까지 요청 → 시간표 순으로 하나씩 실행한다.
-   * 확인하는 동안 다시 깨우는 신호가 오면(요청 파일이 막 생김) 할 일이 없었어도 한 번 더 확인한다.
+   * 요청 → 시간표 순으로 할 일을 골라, 동시 실행 상한(runner.maxParallel)까지 띄운다. 실행은 기다리지 않는다.
+   * 실행이 끝나면 다시 확인한다. 확인하는 동안 다시 깨우는 신호가 오면(요청 파일이 막 생김) 한 번 더 확인한다.
    * 그러지 않으면 그 요청이 다음 주기 확인(30초)까지 밀린다.
    */
   async tick(): Promise<void> {
@@ -316,12 +336,15 @@ export class Runner {
     try {
       do {
         this.again = false;
-        const next = await this.pickNext();
         await this.heartbeat();
-        if (next) {
-          await this.execute(next);
-          this.again = true;
+        let housekeeping = true;
+        while (!this.abort.signal.aborted && this.running.size < maxParallel()) {
+          const next = await this.pickNext(housekeeping);
+          housekeeping = false;
+          if (!next) break;
+          this.launch(next);
         }
+        await this.saveWaiting();
       } while (this.again && !this.abort.signal.aborted);
     } catch (error) {
       await log(this.options.paths, `tick error ${(error as Error).stack ?? error}`);
@@ -330,13 +353,56 @@ export class Runner {
     }
   }
 
-  private async pickNext(): Promise<Pick | undefined> {
+  /** 한 실행을 띄운다. 끝나면 목록에서 빼고 다시 확인한다 */
+  private launch(pick: Pick): void {
+    const id = pick.duty.id;
+    const run = this.execute(pick)
+      .catch((error: Error) => log(this.options.paths, `run error ${id} ${error.stack ?? error.message}`))
+      .finally(() => {
+        this.running.delete(id);
+        if (!this.abort.signal.aborted) void this.tick();
+      });
+    this.running.set(id, run);
+  }
+
+  /** 기다리는 "지금 실행" 요청을 상태에 남긴다 (화면이 "대기 중"으로 보인다) */
+  private async saveWaiting(): Promise<void> {
+    const waiting = [...new Set(this.queue)];
+    const before = this.state.waiting ?? [];
+    if (waiting.length === before.length && waiting.every((id, i) => before[i] === id)) return;
+    if (waiting.length) this.state.waiting = waiting;
+    else delete this.state.waiting;
+    await this.save();
+  }
+
+  /** 테스트용: 지금 도는 실행이 모두 끝날 때까지 기다린다 */
+  async whenIdle(): Promise<void> {
+    while (this.running.size > 0 || this.busy) await Promise.race([...this.running.values(), new Promise((r) => setTimeout(r, 20))]);
+  }
+
+  /**
+   * 다음에 띄울 일을 고른다. 이미 도는 임무는 고르지 않는다 (요청은 끝날 때까지 기다린다).
+   * @param housekeeping 변화 감지·활동 관찰·시스템 관찰도 한다 (한 번의 확인에 한 번만)
+   */
+  private async pickNext(housekeeping = true): Promise<Pick | undefined> {
     const { paths } = this.options;
     const requests = await takeRequests(paths);
     for (const request of requests) this.queue.push(request.dutyId);
-    while (this.queue.length > 0) {
-      const duty = await getDuty(paths, this.queue.shift()!);
+    for (let i = 0; i < this.queue.length; ) {
+      const id = this.queue[i]!;
+      if (this.running.has(id)) {
+        i++;
+        continue;
+      }
+      this.queue.splice(i, 1);
+      // 같은 임무를 여러 번 눌렀으면 한 번만 돈다
+      while (this.queue.includes(id) && !this.running.has(id)) this.queue.splice(this.queue.indexOf(id), 1);
+      const duty = await getDuty(paths, id);
       if (duty) return { duty, reason: "manual" };
+    }
+    if (!housekeeping && this.running.size > 0) {
+      // 같은 확인 안의 두 번째 고르기: 관찰은 다시 하지 않고 시간표만 본다
+      return this.dueDuty(await listDuties(paths), await loadConfig(paths));
     }
     const today = localDateKey(this.now());
     if (this.state.today.date !== today) this.state.today = { date: today, count: 0, costUsd: 0 };
@@ -357,19 +423,29 @@ export class Runner {
     markSessionEnds(duties, this.state, observed.ended, this.now());
     // 시스템 관찰: 켠 출처만 정해진 간격으로 읽고, 규칙 알림·되풀이 작업 질문을 남긴다
     await this.system.tick(this.state, config, this.now()).catch((error: Error) => log(paths, `system watch error ${error.stack ?? error.message}`));
-    if (config.paused || this.state.today.count >= config.dailyRunLimit) return undefined;
-    for (const duty of duties) {
-      const entry = this.state.duties[duty.id];
-      if (!isDue(duty, entry?.lastRunAt, this.now(), entry?.watch)) continue;
-      if (!isChangeTrigger(duty.trigger)) return { duty, reason: "schedule" };
-      return { duty, reason: "change", ...(entry?.watch?.pending ? { cause: entry.watch.pending.cause } : {}) };
-    }
+    const due = this.dueDuty(duties, config);
+    if (due || config.paused || this.state.today.count >= config.dailyRunLimit) return due;
+    // 관찰자·시스템 분석은 다른 실행이 없을 때만 한다 (사용자의 임무를 먼저)
+    if (this.running.size > 0) return undefined;
     // 할 임무가 없고 사용자가 쉬는 중이면 관찰자가 후보 하나를 살펴본다
     const job = this.observer.nextJob(this.state, config, this.now());
     if (job) return { duty: observerDuty(job, this.now()), reason: "observe", cause: job.title, topic: job.topic };
     // 하루 한 번 시스템 관찰 요약을 모델에게 보내 제안받는다 (켰을 때만)
     const systemJob = await this.system.nextJob(this.state, config, this.now()).catch(() => undefined);
     if (systemJob) return { duty: systemJob, reason: "observe", cause: "시스템 관찰 요약", topic: SYSTEM_TOPICS.digest };
+    return undefined;
+  }
+
+  /** 시간표·변화로 돌 때가 된 임무 (도는 중인 것은 빼고) */
+  private dueDuty(duties: Duty[], config: MateConfig): Pick | undefined {
+    if (config.paused || this.state.today.count >= config.dailyRunLimit) return undefined;
+    for (const duty of duties) {
+      if (this.running.has(duty.id)) continue;
+      const entry = this.state.duties[duty.id];
+      if (!isDue(duty, entry?.lastRunAt, this.now(), entry?.watch)) continue;
+      if (!isChangeTrigger(duty.trigger)) return { duty, reason: "schedule" };
+      return { duty, reason: "change", ...(entry?.watch?.pending ? { cause: entry.watch.pending.cause } : {}) };
+    }
     return undefined;
   }
 
@@ -380,8 +456,10 @@ export class Runner {
     this.state.duties[duty.id] = { ...this.state.duties[duty.id], lastRunAt: startedAt };
     if (reason !== "manual") this.state.today.count += 1;
     const runId = newRunId(startedAt);
-    this.state.current = { runId, dutyId: duty.id, startedAt, ...(cause && reason === "observe" ? { cause } : {}) };
-    await saveState(paths, this.state);
+    const now = { runId, dutyId: duty.id, startedAt, ...(cause && reason === "observe" ? { cause } : {}) };
+    this.state.running = [...(this.state.running ?? []).filter((r) => r.dutyId !== duty.id), now];
+    this.state.current = now;
+    await this.save();
     const record = await runDuty(this.options, duty, { reason, ...(cause ? { cause } : {}), ...(topic ? { topic } : {}), runId }, this.abort.signal);
     // 관찰자 실행은 활동 기록에도 남긴다 (무엇을 살펴봤고 제안을 몇 개 남겼는지)
     if (reason === "observe") {
@@ -410,8 +488,13 @@ export class Runner {
     const watch = entry.watch && entry.watch.pending && entry.watch.pending.lastAt <= startedAt ? { ...entry.watch, pending: undefined } : entry.watch;
     this.state.duties[duty.id] = { ...entry, lastRunAt: startedAt, lastStatus: record.status, ...(watch ? { watch } : {}) };
     this.state.today.costUsd = (this.state.today.costUsd ?? 0) + (record.costUsd ?? 0);
-    delete this.state.current;
-    await saveState(paths, this.state);
+    this.state.running = (this.state.running ?? []).filter((r) => r.runId !== runId);
+    if (this.state.running.length) this.state.current = this.state.running.at(-1)!;
+    else {
+      delete this.state.running;
+      delete this.state.current;
+    }
+    await this.save();
   }
 
   /** 시스템 관찰이 모은 기록을 지운다. 읽은 위치는 남겨, 지운 기록을 다시 읽어 오지 않게 한다 */
@@ -419,12 +502,12 @@ export class Runner {
     const st = this.state.system;
     if (!st) return;
     this.state.system = { ...emptySystemState(this.now()), history: st.history, ...(st.healthCursor ? { healthCursor: st.healthCursor } : {}) };
-    await saveState(this.options.paths, this.state);
+    await this.save();
   }
 
   private async heartbeat(): Promise<void> {
     this.state.heartbeatAt = this.now();
-    await saveState(this.options.paths, this.state);
+    await this.save();
   }
 }
 

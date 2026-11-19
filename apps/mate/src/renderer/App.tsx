@@ -107,7 +107,10 @@ export function App() {
   const answeredIds = new Set(overview.chat.lines.map((l) => l.answerTo).filter(Boolean));
   const openQuestions = overview.chat.lines.filter((l) => l.kind === "question" && !answeredIds.has(l.id)).length;
   const { runner } = overview;
-  const current = runner.current ? overview.duties.find((d) => d.id === runner.current!.dutyId) : undefined;
+  // 도는 실행들 (동시에 여러 임무가 돌 수 있다). 관찰자 실행은 임무 목록에 없어 "관찰"로 보인다
+  const runningRuns = runner.running ?? (runner.current ? [runner.current] : []);
+  const runningNames = runningRuns.map((r) => overview.duties.find((d) => d.id === r.dutyId)?.name ?? (r.dutyId === "observer" ? "관찰" : r.dutyId));
+  const waitingCount = overview.duties.filter((d) => d.queued && !d.running).length;
 
   return (
     <div className="app">
@@ -150,7 +153,14 @@ export function App() {
         <div className="runner-status" title={runner.pid ? `실행기 pid ${runner.pid}` : undefined}>
           {overview.config.paused && <span className="chip warn">일시 정지</span>}
           {runner.alive ? (
-            <span className="chip ok">{current ? `${current.name} ${STATUS_LABELS.running}` : "실행기 대기 중"}</span>
+            <span className="chip ok" title={runningNames.join("\n") || undefined}>
+              {runningNames.length === 0
+                ? "실행기 대기 중"
+                : runningNames.length === 1
+                  ? `${runningNames[0]} ${STATUS_LABELS.running}`
+                  : `${runningNames[0]} 외 ${runningNames.length - 1}개 ${STATUS_LABELS.running}`}
+              {waitingCount > 0 ? ` · ${waitingCount}개 대기` : ""}
+            </span>
           ) : (
             <>
               <span className="chip bad">실행기 꺼짐</span>
