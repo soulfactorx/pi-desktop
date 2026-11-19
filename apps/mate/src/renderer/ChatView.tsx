@@ -9,6 +9,8 @@ import { ImagePasteBox } from "./ImagePasteBox";
 import { ChatNavigator } from "./ChatNavigator";
 import { QuoteAsk } from "./QuoteAsk";
 import { withQuote } from "./quote-text";
+import { useLightbox } from "./ImageLightbox";
+import { isVideoFile, VIDEO_FRAMES, videoFrames, videoNote, withVideoNote } from "./video-frames";
 import { ComposerGrip, useComposerSize } from "./composer-size";
 import { useDraftText } from "./draft-text";
 
@@ -102,12 +104,30 @@ export function ChatView({ overview, now, act }: { overview: Overview; now: numb
     }
   };
 
-  /** 붙여넣기·클립보드·고르기로 받은 이미지 파일을 붙인다 */
+  const lightbox = useLightbox();
+
+  /** 붙여넣기·클립보드·고르기로 받은 이미지 파일을 붙인다. 동영상은 장면을 뽑아 이미지로 붙인다 (모델은 동영상을 받지 않는다) */
   const addImageFiles = async (files: File[]) => {
     const notes: string[] = [];
     const added: ChatImage[] = [];
     for (const file of files) {
       const name = file.name || "붙여 넣은 이미지";
+      if (isVideoFile(file)) {
+        const room = imageLimits.count - images.length - added.length;
+        if (room <= 0) {
+          notes.push(`이미지는 한 번에 ${imageLimits.count}장까지라 ${name}의 장면을 넣지 못했어요`);
+          continue;
+        }
+        setImageNote(`${name}에서 장면을 뽑는 중…`);
+        try {
+          const { duration, frames } = await videoFrames(file, Math.min(VIDEO_FRAMES, room));
+          for (const f of frames) added.push({ name: f.name, mimeType: f.mimeType, data: f.data });
+          setText((prev) => withVideoNote(prev, videoNote(name, duration, frames)));
+        } catch (error) {
+          notes.push(`${name}: ${(error as Error).message}`);
+        }
+        continue;
+      }
       if (!IMAGE_TYPES.includes(file.type)) notes.push(`${name}: PNG·JPEG·GIF·WebP 이미지만 붙일 수 있어요`);
       else if (file.size > imageLimits.mb * 1024 * 1024) notes.push(`${name}: ${imageLimits.mb}MB보다 커요`);
       else if (images.length + added.length >= imageLimits.count) notes.push(`이미지는 한 번에 ${imageLimits.count}장까지예요`);
@@ -190,6 +210,7 @@ export function ChatView({ overview, now, act }: { overview: Overview; now: numb
         {chat.pending > 0 && !chat.busy && <div className="chat-busy muted">맡긴 일 {chat.pending}건이 끝나면 결과를 알려 드릴게요.</div>}
         <div ref={bottom} />
         <ChatNavigator scroller={log} turnSelector=".bubble.user" textSelector=".bubble-text" />
+        {lightbox.element}
         <QuoteAsk root={log} onQuote={(quoted) => setText((prev) => withQuote(prev, quoted))} />
       </div>
       <div className="chat-input">
@@ -217,7 +238,12 @@ export function ChatView({ overview, now, act }: { overview: Overview; now: numb
           <div className="chat-images">
             {images.map((image, i) => (
               <span key={i} className="chat-image" title={image.name}>
-                <img src={`data:${image.mimeType};base64,${image.data}`} alt={image.name} />
+                <img
+                  src={`data:${image.mimeType};base64,${image.data}`}
+                  alt={image.name}
+                  className="zoomable"
+                  onClick={() => lightbox.open(images.map((im) => ({ src: `data:${im.mimeType};base64,${im.data}`, name: im.name })), i)}
+                />
                 <button className="link" title="빼기" aria-label={`${image.name} 빼기`} onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}>
                   ×
                 </button>
@@ -258,13 +284,13 @@ export function ChatView({ overview, now, act }: { overview: Overview; now: numb
               <button className="tool-button" disabled={sending} onClick={() => void pasteFromClipboard()} title="클립보드의 이미지 붙이기" aria-label="클립보드의 이미지 붙이기">
                 📋
               </button>
-              <button className="tool-button" disabled={sending} onClick={() => imageInput.current?.click()} title="이미지 고르기" aria-label="이미지 고르기">
+              <button className="tool-button" disabled={sending} onClick={() => imageInput.current?.click()} title="이미지·동영상 고르기 (동영상은 장면을 이미지로 뽑아 붙입니다)" aria-label="이미지·동영상 고르기">
                 🖼
               </button>
               <input
                 ref={imageInput}
                 type="file"
-                accept={IMAGE_TYPES.join(",")}
+                accept={[...IMAGE_TYPES, "video/*"].join(",")}
                 multiple
                 hidden
                 onChange={(e) => {
