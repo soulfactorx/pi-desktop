@@ -6,6 +6,7 @@ import { resendCandidate } from "./run-status";
 import { ToolCard, type ToolCardActions } from "./ToolCards";
 import { ChatNavigator } from "./ChatNavigator";
 import { QuoteAsk } from "./QuoteAsk";
+import { useLightbox, type LightboxImage } from "./ImageLightbox";
 
 /** 대화 목록. 새 내용이 오면 사용자가 위로 스크롤해 둔 경우가 아니면 맨 아래로 따라간다. */
 export function ChatView({
@@ -26,6 +27,7 @@ export function ChatView({
   const scroller = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const resend = running ? undefined : resendCandidate(items);
+  const lightbox = useLightbox();
 
   useEffect(() => {
     const el = scroller.current;
@@ -47,12 +49,14 @@ export function ChatView({
           key={item.key}
           item={item}
           actions={actions}
+          onOpenImage={lightbox.open}
           onResend={resend && onResend && item.key === resend.anchorKey ? () => onResend(resend.text) : undefined}
         />
       ))}
       {running && <div className="working">Pi가 작업 중…</div>}
       <ChatNavigator scroller={scroller} turnSelector=".msg.user" />
       {onQuote && <QuoteAsk root={scroller} onQuote={onQuote} />}
+      {lightbox.element}
     </div>
   );
 }
@@ -61,10 +65,13 @@ function Item({
   item,
   actions,
   onResend,
+  onOpenImage,
 }: {
   item: ChatItem;
   actions: ToolCardActions;
   onResend: (() => void) | undefined;
+  /** 보낸 이미지를 크게 본다 */
+  onOpenImage: (images: LightboxImage[], index: number) => void;
 }) {
   switch (item.kind) {
     case "user":
@@ -73,7 +80,14 @@ function Item({
           {item.images && item.images.length > 0 && (
             <div className="msg-images">
               {item.images.map((image, i) => (
-                <img key={i} src={`data:${image.mimeType};base64,${image.data}`} alt={`첨부 이미지 ${i + 1}`} />
+                <img
+                  key={i}
+                  className="zoomable"
+                  src={`data:${image.mimeType};base64,${image.data}`}
+                  alt={`첨부 이미지 ${i + 1}`}
+                  title="누르면 크게 봅니다"
+                  onClick={() => onOpenImage(item.images!.map((im, j) => ({ src: `data:${im.mimeType};base64,${im.data}`, name: `첨부 이미지 ${j + 1}` })), i)}
+                />
               ))}
             </div>
           )}

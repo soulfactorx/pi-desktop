@@ -12,6 +12,9 @@ import {
   useSharedImages,
 } from "./clipboard-images";
 import { ImagePasteBox } from "./ImagePasteBox";
+import { rnum } from "./app-tunables";
+import { useLightbox } from "./ImageLightbox";
+import { isVideoFile, VIDEO_FRAMES, videoFrames, videoNote, withVideoNote } from "./video-frames";
 import { ComposerGrip, useComposerSize } from "./composer-size";
 import {
   atQuery,
@@ -94,6 +97,10 @@ export function Composer(props: ComposerProps) {
   const [attachError, setAttachError] = useState<string | undefined>();
   const [dragging, setDragging] = useState(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  /** 동영상 장면을 뽑는 동안 바뀐 입력창 글에 설명을 붙이기 위해 */
+  const latestValue = useRef(value);
+  latestValue.current = value;
+  const lightbox = useLightbox();
   const { gripProps } = useComposerSize(textarea, value, "pi-desktop:composer-height");
   const imageInput = useRef<HTMLInputElement>(null);
   const [pasteBox, setPasteBox] = useState(false);
@@ -206,6 +213,24 @@ export function Composer(props: ComposerProps) {
     let count = images.length;
     const added: ImageAttachment[] = [];
     for (const file of files) {
+      // 동영상: 장면을 뽑아 이미지로 붙이고, 입력창에 어떤 장면인지 적는다 (모델은 동영상을 받지 않는다)
+      if (isVideoFile(file)) {
+        const room = rnum("app.maxAttachments") - count;
+        if (room <= 0) {
+          errors.push(`이미지는 한 번에 ${rnum("app.maxAttachments")}장까지 붙일 수 있어 ${file.name || "동영상"}의 장면을 넣지 못했습니다`);
+          continue;
+        }
+        setAttachError(`${file.name || "동영상"}에서 장면을 뽑는 중…`);
+        try {
+          const { duration, frames } = await videoFrames(file, Math.min(VIDEO_FRAMES, room));
+          for (const f of frames) added.push({ id: crypto.randomUUID(), name: f.name, mimeType: f.mimeType, data: f.data, size: f.size });
+          count += frames.length;
+          onChange(withVideoNote(latestValue.current, videoNote(file.name || "동영상", duration, frames)));
+        } catch (error) {
+          errors.push(`${file.name || "동영상"}: ${(error as Error).message}`);
+        }
+        continue;
+      }
       const reason = rejectReason(file, count);
       if (reason) {
         errors.push(reason);
@@ -316,6 +341,7 @@ export function Composer(props: ComposerProps) {
       }}
       onDrop={onDrop}
     >
+      {lightbox.element}
       {showSuggestions && (
         <ul className="suggestions" role="listbox" aria-label={mode === "file" ? "파일" : "Pi 명령"}>
           {suggestions.map((item, i) => (
@@ -348,7 +374,7 @@ export function Composer(props: ComposerProps) {
           <div className="attachments">
             {images.map((image) => (
               <figure key={image.id} className="attachment" title={`${image.name} · ${formatBytes(image.size)}`}>
-                <img src={toDataUrl(image)} alt={image.name} />
+                <img src={toDataUrl(image)} alt={image.name} className="zoomable" onClick={() => lightbox.open(images.map((a) => ({ src: toDataUrl(a), name: a.name })), images.indexOf(image))} />
                 <button
                   type="button"
                   className="attachment-remove"
@@ -396,13 +422,13 @@ export function Composer(props: ComposerProps) {
           <button type="button" className="tool-button" disabled={disabled} onClick={() => void pasteFromClipboard()} title="클립보드의 이미지 붙이기" aria-label="클립보드의 이미지 붙이기">
             📋
           </button>
-          <button type="button" className="tool-button" disabled={disabled} onClick={() => imageInput.current?.click()} title="이미지 고르기" aria-label="이미지 고르기">
+          <button type="button" className="tool-button" disabled={disabled} onClick={() => imageInput.current?.click()} title="이미지·동영상 고르기 (동영상은 장면을 이미지로 뽑아 붙입니다)" aria-label="이미지·동영상 고르기">
             🖼
           </button>
           <input
             ref={imageInput}
             type="file"
-            accept="image/png,image/jpeg,image/gif,image/webp"
+            accept="image/png,image/jpeg,image/gif,image/webp,video/*"
             multiple
             hidden
             onChange={(e) => {

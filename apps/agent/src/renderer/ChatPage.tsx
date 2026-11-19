@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { ChatView } from "../../../desktop/src/renderer/ChatView";
 import { withQuote } from "../../../desktop/src/renderer/quote-text";
+import { useLightbox } from "../../../desktop/src/renderer/ImageLightbox";
+import { isVideoFile, VIDEO_FRAMES, videoFrames, videoNote, withVideoNote } from "../../../desktop/src/renderer/video-frames";
 import { StatusLine, Widgets } from "../../../desktop/src/renderer/ExtensionUi";
 import { acceptsImages, splitAttachments, withAttachments } from "./attachments";
 import { useAppNumber } from "./app-number";
@@ -170,9 +172,31 @@ export function ChatPage({
     setAttachNote(failed.length > 0 ? `붙이지 못한 이미지: ${failed.map((i) => `${i.name} (${i.error})`).join(", ")}` : undefined);
   };
 
-  /** 브라우저가 준 이미지 파일(붙여넣기·클립보드·기기에서 고르기)을 붙인다 */
-  const addImageFiles = (files: File[]) => {
+  const lightbox = useLightbox();
+
+  /** 동영상: 장면을 뽑아 이미지로 붙이고, 입력창에 어떤 장면인지 적는다 (모델은 동영상을 받지 않는다) */
+  const addVideoFiles = async (videos: File[]) => {
+    for (const file of videos) {
+      const name = file.name || "동영상";
+      setAttachNote(`${name}에서 장면을 뽑는 중…`);
+      try {
+        const { duration, frames } = await videoFrames(file, VIDEO_FRAMES);
+        setImages((prev) => [...prev, ...frames.map((f) => ({ name: f.name, mimeType: f.mimeType, data: f.data }))]);
+        setDraft((prev) => withVideoNote(prev, videoNote(name, duration, frames)));
+        setAttachNote(undefined);
+      } catch (error) {
+        setAttachNote(`${name}: ${(error as Error).message}`);
+      }
+    }
+  };
+
+  /** 브라우저가 준 이미지 파일(붙여넣기·클립보드·기기에서 고르기)을 붙인다. 동영상은 장면을 뽑아 붙인다 */
+  const addImageFiles = (all: File[]) => {
     if (!acceptsImages(model?.input)) return setAttachNote("이 모델은 이미지를 볼 수 없습니다. 이미지를 받는 모델로 바꾸세요.");
+    const videos = all.filter(isVideoFile);
+    const files = all.filter((f) => !isVideoFile(f));
+    if (videos.length > 0) void addVideoFiles(videos);
+    if (files.length === 0) return;
     void Promise.all(
       files.map(async (file): Promise<ImageAttachment> => {
         const name = file.name || "붙여 넣은 이미지";
@@ -358,6 +382,7 @@ export function ChatPage({
       )}
       <Widgets ui={ui} placement="aboveEditor" />
       <QueuePanel queue={chat.queue} onClear={clearQueue} />
+      {lightbox.element}
       <div className="composer">
         <ComposerGrip {...gripProps} />
         {/* 입력 상자: 첨부·글 칸·버튼 줄을 한 테두리 안에 담는다 */}
@@ -366,7 +391,12 @@ export function ChatPage({
             <div className="attach-tray">
               {images.map((image, i) => (
                 <span key={i} className="attach-chip" title={image.name}>
-                  <img src={`data:${image.mimeType};base64,${image.data}`} alt={image.name} />
+                  <img
+                    src={`data:${image.mimeType};base64,${image.data}`}
+                    alt={image.name}
+                    className="zoomable"
+                    onClick={() => lightbox.open(images.map((im) => ({ src: `data:${im.mimeType};base64,${im.data}`, name: im.name })), i)}
+                  />
                   <button className="icon-button" title="빼기" onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}>
                     ×
                   </button>
@@ -412,13 +442,13 @@ export function ChatPage({
               <button className="tool-button" disabled={!live} onClick={() => void pasteFromClipboard()} title="클립보드의 이미지 붙이기" aria-label="클립보드의 이미지 붙이기">
                 📋
               </button>
-              <button className="tool-button" disabled={!live} onClick={() => imageInput.current?.click()} title="이 기기에서 이미지 고르기" aria-label="이 기기에서 이미지 고르기">
+              <button className="tool-button" disabled={!live} onClick={() => imageInput.current?.click()} title="이 기기에서 이미지·동영상 고르기 (동영상은 장면을 이미지로 뽑아 붙입니다)" aria-label="이 기기에서 이미지·동영상 고르기">
                 🖼
               </button>
               <input
                 ref={imageInput}
                 type="file"
-                accept="image/png,image/jpeg,image/gif,image/webp"
+                accept="image/png,image/jpeg,image/gif,image/webp,video/*"
                 multiple
                 hidden
                 onChange={(e) => {
