@@ -102,6 +102,7 @@ GUI가 Pi와 직접 대화하지 않고, **대상 호스트에서 도는 작은 
 2. Agent는 의존성 없는 단일 번들(esbuild)로 만든다. `node-pty`처럼 네이티브 모듈이 필요한 pty 기능은 선택 사항으로 두고, 없으면 `script`/`python pty`로 대체하거나 해당 기능만 비활성화한다.
 3. 버전이 다르면 `~/.pi-desktop/host-agent-<ver>.js`로 업로드한다(SSH는 stdin 파이프 또는 sftp, WSL은 `\\wsl$` 경로).
 4. Node가 없으면 Pi 설치 마법사(§4.9)로 연결한다.
+5. **node 찾기** (`host-deploy`의 `FIND_NODE`): ssh·wsl로 명령만 실행하면 비대화형 셸이라 `.bashrc`를 읽지 않는다. 그래서 nvm·fnm처럼 `.bashrc`에서 PATH를 더한 Node는 터미널에서는 보이는데 `command -v node`로는 안 보인다. 차례로 PATH → Pi 설치기의 Node(`pi-node`) → volta·mise·asdf·n·`/usr/local/bin`·`/opt/node` → nvm·fnm의 가장 높은 버전 → 대화형 셸(`bash -ic`, 15초 제한)에 물어본다. 찾은 Node의 폴더는 실행 명령의 PATH 앞에 둔다 (Agent·실행기가 `npm`·`pi`를 PATH로 찾으므로).
 
 **전송 계층**
 

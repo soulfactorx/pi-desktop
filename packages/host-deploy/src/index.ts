@@ -1,4 +1,4 @@
-export { bundleBuildId, bundleFileName, deployBundle, MIN_NODE_MAJOR, nodeMajor, parseProbe, probeScript, runCommand, shQuote, stderrTail, type RemoteRunner } from "./bundle";
+export { bundleBuildId, FIND_NODE, nodePathPrefix, bundleFileName, deployBundle, MIN_NODE_MAJOR, nodeMajor, parseProbe, probeScript, runCommand, shQuote, stderrTail, type RemoteRunner } from "./bundle";
 export { collectKit, deployKit, unpackScript, type KitBundle, type KitFile } from "./kit";
 export { explainSshError, remoteSh, sshArgs, sshExecutable, sshRunner, sshShell, SSH_PREFIX, validateSshHost, type SshHostConfig } from "./ssh";
 export { readOnlySshHosts, SshHostStore } from "./ssh-hosts";

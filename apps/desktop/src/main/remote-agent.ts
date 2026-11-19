@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { FIND_NODE } from "@pi-desktop/host-deploy";
 import { agentBuildId } from "./agent-build";
 import { appNum } from "./app-tunables";
 import { appDefault } from "../shared/app-tunables";
@@ -57,12 +58,11 @@ export function agentFileName(version: string, bundle: Buffer): string {
 
 /**
  * 원격에서 node와 Agent 파일을 확인하는 스크립트.
- * PATH에 node가 없으면 Pi 공식 설치기가 깐 Node(pi-node)를 쓴다.
+ * node 찾기는 host-deploy의 FIND_NODE와 같다 (nvm 등 .bashrc에서만 PATH에 들어가는 Node도 찾는다).
  */
 export function probeScript(agentFile: string): string {
   return [
-    'NODE="$(command -v node 2>/dev/null || true)"',
-    'if [ -z "$NODE" ] && [ -x "$HOME/.local/share/pi-node/current/bin/node" ]; then NODE="$HOME/.local/share/pi-node/current/bin/node"; fi',
+    FIND_NODE,
     'printf "pi-desktop-home=%s\\n" "$HOME"',
     'printf "pi-desktop-node=%s\\n" "$NODE"',
     'if [ -n "$NODE" ]; then printf "pi-desktop-nodeVersion=%s\\n" "$("$NODE" -v)"; fi',

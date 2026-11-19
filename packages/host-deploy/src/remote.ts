@@ -1,4 +1,4 @@
-import { deployBundle, shQuote, type RemoteRunner } from "./bundle";
+import { deployBundle, nodePathPrefix, shQuote, type RemoteRunner } from "./bundle";
 import { deployKit, type KitBundle } from "./kit";
 import { explainSshError, sshRunner, sshShell, type SshHostConfig } from "./ssh";
 import { wslRunner, wslShell } from "./wsl";
@@ -65,7 +65,7 @@ export async function prepareRemote(
   const appHome = `${deployed.home}/${app.homeDir}`;
   const kitBase = await deployKit(run, appHome, await app.kit());
   const placed: Placed = { userHome: deployed.home, appHome, node: deployed.node, bundle: deployed.remotePath, kitBase };
-  return { spec: { ...launch(app.command(placed)), agentBuild: deployed.build }, placed };
+  return { spec: { ...launch(nodePathPrefix(placed.node) + app.command(placed)), agentBuild: deployed.build }, placed };
 }
 
 export function prepareWsl(distro: string, app: RemoteApp): Promise<Prepared> {
