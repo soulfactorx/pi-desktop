@@ -297,6 +297,13 @@ export function applyEvent(state: ChatState, seq: number, raw: unknown): ChatSta
         : rest;
     }
 
+    // 확장 오류 (확장의 이벤트 처리기가 실패함). Pi 1.6.0부터 pi.events 처리기의 오류도 여기로 온다
+    case "extension_error": {
+      const where = String(event.extensionPath ?? "").split(/[\\/]/).filter(Boolean).slice(-2).join("/") || "확장";
+      const on = event.event ? ` (${String(event.event)})` : "";
+      return withNotice(next, `x${seq}`, "error", `확장 오류: ${where}${on}`, String(event.error ?? ""));
+    }
+
     default:
       return next;
   }

@@ -29,7 +29,7 @@ export const PRESETS: ProviderPreset[] = [
   { label: "Ollama", id: "ollama", name: "Ollama", baseUrl: "http://localhost:11434/v1", api: "openai-completions", apiKey: "ollama" },
   { label: "LM Studio", id: "lmstudio", name: "LM Studio", baseUrl: "http://localhost:1234/v1", api: "openai-completions", apiKey: "lm-studio" },
   { label: "vLLM", id: "vllm", name: "vLLM", baseUrl: "http://localhost:8000/v1", api: "openai-completions", apiKey: "vllm" },
-  { label: "llama.cpp 서버", id: "llamacpp", name: "llama.cpp", baseUrl: "http://localhost:8080/v1", api: "openai-completions", apiKey: "llamacpp" },
+  { label: "llama.cpp 서버", id: "llamacpp", name: "llama.cpp", baseUrl: "http://localhost:9931/v1", api: "openai-completions", apiKey: "llamacpp" }, // llama-server의 지금 기본 포트 (Pi 1.6.0도 9931로 바꿈)
   { label: "OpenAI 호환 (직접 입력)", id: "my-endpoint", name: "", baseUrl: "https://", api: "openai-completions" },
 ];
 
