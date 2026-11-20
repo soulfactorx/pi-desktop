@@ -1,5 +1,6 @@
 import { app, dialog, shell, type BrowserWindow } from "electron";
 import electronUpdater from "electron-updater";
+import { repairLinuxAutostart } from "../../../mate/src/main/autostart";
 import type { UpdateState } from "../shared/api";
 import {
   availablePrompt,
@@ -66,6 +67,8 @@ export class Updater {
       this.set({ status: "downloaded", version: info.version });
       void this.askRestart();
     });
+    // AppImage는 업데이트하면 새 버전 이름의 파일로 바뀐다: PC를 켤 때 자동 시작 항목이 새 파일을 가리키게 한다
+    autoUpdater.on("appimage-filename-updated", (path: string) => void repairLinuxAutostart(path).catch(() => undefined));
     autoUpdater.on("error", (error) => this.set({ status: "error", error: error instanceof Error ? error.message : String(error) }));
     setTimeout(() => void this.check(), firstCheckMs()).unref?.();
     setInterval(() => void this.check(), checkIntervalMs()).unref?.();

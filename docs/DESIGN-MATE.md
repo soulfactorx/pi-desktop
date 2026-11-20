@@ -92,7 +92,7 @@ Pi 세션을 `~/.pi/agent/sessions`가 아니라 Mate 홈에 두는 것은 백�
 - 하나만 돈다(`run/mated.pid` + 프로세스 확인).
 - 실행기가 꺼져 있던 동안 놓친 시간표는 **한 번만** 따라잡는다.
 - **로그인할 때 실행기 시작**(설정, 설치본만): 로그인 항목이 앱을 `--mate-runner-only`로 띄워 창 없이 실행기만 확인하고 끝낸다.
-  Windows·macOS는 Electron 로그인 항목(macOS는 `wasOpenedAtLogin`으로 구분), Linux는 `~/.config/autostart/pi-desktop-mate.desktop`. 끄면 PC를 다시 켠 뒤 앱을 한 번 열어야 실행기가 돈다.
+  Windows·macOS는 Electron 로그인 항목(macOS는 `wasOpenedAtLogin`으로 구분), Linux는 `~/.config/autostart/pi-desktop-mate.desktop`. AppImage는 자동 업데이트하면 새 버전 이름의 파일로 바뀌고 옛 파일은 지워진다(electron-updater). 그래서 항목이 옛 경로를 가리켜 PC를 켜도 뜨지 않던 일이 있었다 — 앱이 뜰 때마다와 업데이트가 이름을 바꿀 때(`appimage-filename-updated`) 항목을 지금 AppImage로 고친다 (`repairLinuxAutostart`). 항목은 패널(트레이)이 뜬 뒤 5초 늦게 띄운다 (`X-KDE-autostart-after=panel`, `X-GNOME-Autostart-Delay`). 끄면 PC를 다시 켠 뒤 앱을 한 번 열어야 실행기가 돈다.
   - 기본은 꺼짐이라(OS 시작 항목을 묻지 않고 바꾸지 않는다) 놓치기 쉽다. Mate에 할 일(켠 임무·활동/시스템 관찰·휴대폰 연결)이 생기면 Mate 화면 위에 **한 번 묻는다** ("PC를 켜면 Mate가 바로 일하게 할까요?" → 켜기 / 괜찮아요). 이 PC의 실행기를 볼 때만 묻고, "괜찮아요"는 다시 묻지 않는다 (설정 탭 맨 위 '실행'에서 언제든 켜고 끈다).
   - 로그인하면 Pi Desktop이 창 없이 트레이에 뜨고(DESIGN-ONE-APP.md §8 트레이) 실행기를 확인한다. 트레이 아이콘에서 실행기가 도는지·오늘 실행 수·새 제안을 본다.
   - 로그인 뒤에 뜬다 (Windows 서비스처럼 로그인 전에는 돌지 않는다). 휴대폰 웹(pi-web)은 해당 없음: Termux:Boot에 `pi-web start`를 걸어 둔다.

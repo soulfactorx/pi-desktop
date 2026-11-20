@@ -24,7 +24,7 @@ import { Workspaces } from "./workspaces";
 import { frameNavigation } from "./navigation";
 import { APP_PROTOCOL, routeFromArgv, showAppNotification } from "./app-notification";
 import { migrateFromOldApps, oldApps } from "./migrate";
-import { isRunnerOnlyLaunch } from "../../../mate/src/main/autostart";
+import { isRunnerOnlyLaunch, repairLinuxAutostart } from "../../../mate/src/main/autostart";
 import { appMenuTemplate as agentMenuTemplate } from "../../../agent/src/main/app-menu";
 import type { PluginWorkspaceId, WorkspaceId } from "../shared/api";
 
@@ -379,6 +379,8 @@ app.whenReady().then(() => {
     return true;
   });
   workspaces.start();
+  // 리눅스: PC를 켤 때 자동 시작 항목이 지금 AppImage를 가리키게 한다 (업데이트로 파일 이름이 바뀌면 옛 경로가 남는다)
+  void repairLinuxAutostart().catch(() => undefined);
   // 로그인할 때 뜬 실행은 창 없이 트레이에만 (실행기는 위의 start가 띄우고, 여기서 한 번 더 확인한다)
   if (runnerOnlyLaunch) void workspaces.loginLaunch().catch(() => undefined);
   else createWindow();
