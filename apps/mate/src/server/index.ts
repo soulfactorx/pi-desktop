@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { app, appReady, configureShell, emitApp, hub, onQuit } from "@pi-desktop/web-shell/electron-main";
 import { startWebServer } from "@pi-desktop/web-shell/server";
 import { embeddedApp } from "@pi-desktop/web-shell/embed";
+import { MOUNT_PREFIXES } from "@pi-desktop/web-shell/protocol";
 import { IpcChannels } from "../shared/api";
 
 /**
@@ -74,8 +75,9 @@ function piWebUrl(): string | undefined {
 }
 
 function openPiWeb(): void {
-  const url = piWebUrl();
-  if (!url) throw new Error("Pi Web이 꺼져 있습니다. Termux에서 pi-web을 실행한 뒤 다시 누르세요");
+  // 한 포트면 Pi Web은 같은 사이트의 첫 화면이다
+  const url = embedded?.embed.mount ? "/" : piWebUrl();
+  if (!url) throw new Error("Pi Web이 꺼져 있습니다. 서버(Termux·VM)에서 pi-web start를 실행한 뒤 다시 누르세요");
   hub.controlOne({ kind: "open", url });
 }
 
@@ -83,7 +85,17 @@ appReady();
 await app.whenReady();
 hub.override(IpcChannels.openPiManager, () => openPiWeb());
 
-const server = await startWebServer({ app: "Pi Desktop Mate", version: version(), port, host, dataDir, publicDir }).catch((error: Error) => {
+const mount = embedded?.embed.mount;
+const server = await startWebServer({
+  app: "Pi Desktop Mate",
+  version: version(),
+  port,
+  host,
+  dataDir,
+  publicDir,
+  // 한 프로세스로 불려 왔으면 Pi Web 서버의 /mate/ 아래에 붙는다 (한 포트)
+  ...(mount ? { mount: { ...mount, prefix: MOUNT_PREFIXES.mate } } : {}),
+}).catch((error: Error) => {
   console.error(error.message);
   // 한 프로세스로 불려 왔으면 Pi Web은 그대로 두고 이 작업 공간만 빠진다
   if (embedded) throw error;
@@ -103,7 +115,8 @@ function shutdown(): void {
 onQuit(shutdown);
 if (embedded) {
   // 신호와 끄기는 Pi Web 서버가 받아 함께 끈다
-  embedded.embed.urls.mate = server.url;
+  // 한 포트면 같은 사이트의 경로 (화면이 지금 연 주소에 붙여 연다)
+  embedded.embed.urls.mate = mount ? MOUNT_PREFIXES.mate : server.url;
   embedded.embed.shutdowns.push(shutdown);
 } else {
   process.on("SIGINT", shutdown);

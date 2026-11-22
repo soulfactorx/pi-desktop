@@ -74,7 +74,7 @@ Electron 앱은 Android에서 돌지 않습니다. 대신 휴대폰의 [Termux](
 
 | 명령 | 하는 일 |
 |---|---|
-| `pi-web` | Pi Web과 Agent·Mate 작업 공간을 **한 프로세스로** 켜고 브라우저를 엽니다 (`pi-web start`, 포트 8787·8788·8789). 화면 아래 막대의 Pi·A·M으로 바꿉니다 |
+| `pi-web` | Pi Web과 Agent·Mate 작업 공간을 **한 프로세스로** 켜고 브라우저를 엽니다 (`pi-web start`, 포트 8787 하나: Agent는 `/agent/`, Mate는 `/mate/`). 화면 아래 막대의 Pi·A·M으로 바꿉니다 |
 | `pi-web url` | 토큰이 든 주소를 보여 줍니다 (다른 브라우저에서 열 때) |
 | `pi-web stop` / `restart` / `status` / `log` | 끄기·다시 켜기·상태·서버 기록 |
 | `pi-web update` | 최신 릴리스로 업데이트 (토큰·설정은 그대로, 켜져 있던 것은 다시 켭니다) |

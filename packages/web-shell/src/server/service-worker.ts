@@ -7,7 +7,12 @@
  *   휴대폰은 뒤에 둔 탭을 버렸다가 앞으로 올 때 새로 읽어 메시지를 잃으므로, 화면은 뜰 때·보일 때 캐시도 확인한다 (client/notify.ts)
  * 화면 파일을 미리 받아 두지는 않는다 (서버가 같은 휴대폰에 있어 오프라인일 일이 없다).
  */
+import { MOUNT_PREFIXES } from "../protocol";
+
 export const SERVICE_WORKER_SOURCE = `
+// 한 포트에 붙은 앱(Agent·Mate)의 경로. 알림은 그 앱의 탭으로 보낸다
+const MOUNTS = ${JSON.stringify(Object.values(MOUNT_PREFIXES))};
+const baseOf = (path) => MOUNTS.find((m) => path.startsWith(m)) || "/";
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 self.addEventListener("push", (event) => {
@@ -27,18 +32,19 @@ self.addEventListener("notificationclick", (event) => {
   const data = event.notification.data || {};
   const target = new URL(data.url || "./", self.registration.scope);
   if (data.open) target.searchParams.set("ws-open", data.open);
+  const base = baseOf(target.pathname);
   event.waitUntil((async () => {
     if (data.open) {
       try {
         const cache = await caches.open("ws-pending");
-        await cache.put(new Request("/ws-pending/open"), new Response(data.open, { headers: { "X-At": String(Date.now()) } }));
+        await cache.put(new Request("/ws-pending/open?b=" + encodeURIComponent(base)), new Response(data.open, { headers: { "X-At": String(Date.now()) } }));
       } catch (error) {
         // 맡기지 못하면 메시지·주소로만 넘긴다
       }
     }
     const tabs = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const tab of tabs) {
-      if (!tab.url.startsWith(self.registration.scope)) continue;
+      if (!tab.url.startsWith(self.registration.scope) || baseOf(new URL(tab.url).pathname) !== base) continue;
       if (data.open) tab.postMessage({ type: "ws-open", open: data.open });
       try {
         await tab.focus();

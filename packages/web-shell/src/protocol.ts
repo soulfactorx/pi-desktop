@@ -113,6 +113,18 @@ export interface DirListing {
 }
 
 /** 웹 서버의 경로 */
+/**
+ * 한 포트로 띄울 때(pi-web start) Agent·Mate가 붙는 경로. Pi Web은 "/"다.
+ * 같은 사이트 안에서 앱을 가른다: 화면의 연결·토큰 확인 주소, 알림을 누르면 열 화면, 서비스 워커가 고를 탭
+ */
+export const MOUNT_PREFIXES = { agent: "/agent/", mate: "/mate/" } as const;
+
+/** 이 경로가 속한 앱의 바탕 경로 ("/agent/x" → "/agent/", 그 밖은 "/") */
+export function appBasePath(pathname: string): string {
+  for (const prefix of Object.values(MOUNT_PREFIXES)) if (pathname.startsWith(prefix)) return prefix;
+  return "/";
+}
+
 export const WebPaths = {
   socket: "/ws",
   /** 토큰이 맞는지만 확인한다 (200 또는 401) */

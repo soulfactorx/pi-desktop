@@ -1,4 +1,4 @@
-import { SERVICE_WORKER_PATH, ShellChannels } from "../protocol";
+import { appBasePath, SERVICE_WORKER_PATH, ShellChannels } from "../protocol";
 import { webDefault } from "../tunables-defs";
 
 /**
@@ -132,7 +132,8 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 const OPEN_PARAM = "ws-open";
 
 const PENDING_CACHE = "ws-pending";
-const PENDING_OPEN = "/ws-pending/open";
+/** 서비스 워커가 맡겨 둔 알림 누름. 한 사이트에 앱이 셋이라 앱의 바탕 경로로 가른다 */
+const pendingOpenKey = () => `/ws-pending/open?b=${encodeURIComponent(appBasePath(location.pathname))}`;
 /** 알림을 누른 지 이만큼 지난 맡김은 버린다 */
 const PENDING_MAX_MS = webDefault("webShell.pendingMaxSeconds") * 1000;
 
@@ -154,9 +155,10 @@ export function onNotificationOpen(handler: (open: string) => void): void {
   const takePending = async (): Promise<string | undefined> => {
     if (!("caches" in window)) return undefined;
     const cache = await caches.open(PENDING_CACHE);
-    const response = await cache.match(PENDING_OPEN);
+    const key = pendingOpenKey();
+    const response = await cache.match(key);
     if (!response) return undefined;
-    await cache.delete(PENDING_OPEN);
+    await cache.delete(key);
     const at = Number(response.headers.get("X-At") ?? 0);
     return Date.now() - at < PENDING_MAX_MS ? response.text() : undefined;
   };

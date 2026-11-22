@@ -63,7 +63,7 @@ function showTokenForm(message: string): void {
     <form class="web-token">
       <h1>Pi Web</h1>
       <p class="web-token-message"></p>
-      <p>Termux에서 <code>pi-web url</code>을 실행하면 토큰이 들어 있는 주소가 나옵니다. 그 주소를 열거나, 아래에 토큰을 붙여 넣으세요.</p>
+      <p>서버(Termux·VM)에서 <code>pi-web url</code>을 실행하면 토큰이 들어 있는 주소가 나옵니다. 그 주소를 열거나, 아래에 토큰을 붙여 넣으세요.</p>
       <input name="token" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="토큰" />
       <button type="submit">연결</button>
     </form>`;

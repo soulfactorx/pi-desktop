@@ -5,11 +5,13 @@ import { isWebClient } from "./clipboard-images";
 import { UpdateStrip, useUpdateState } from "./UpdateBadge";
 
 /**
- * 휴대폰 웹에서는 Agent·Mate가 같은 기기의 다른 포트에서 돈다. 서버가 아는 주소(127.0.0.1)를
- * 지금 Pi Web을 연 주소로 바꿔, 다른 기기(같은 와이파이)에서 열어도 그 기기가 찾아가게 한다.
+ * 웹에서는 Agent·Mate가 같은 서버의 /agent/·/mate/ 아래에 있다 (한 포트, pi-web start). 지금 연 주소에 붙여 연다
+ * (포트 포워딩·다른 기기에서 열어도 그대로). 따로 띄운 서버(pi-web agent start)는 다른 포트의 주소를 알려 주므로
+ * 호스트만 지금 연 주소로 바꾼다.
  */
 function frameUrl(url: string): string {
   if (!isWebClient()) return url;
+  if (url.startsWith("/")) return new URL(url, window.location.href).href;
   try {
     const next = new URL(url);
     next.hostname = window.location.hostname;

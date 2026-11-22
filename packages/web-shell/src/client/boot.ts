@@ -1,4 +1,4 @@
-import { CLICK_OPEN, ShellChannels, WebPaths, type Control, type DialogRequest, type DirListing, type MenuGroup } from "../protocol";
+import { appBasePath, CLICK_OPEN, ShellChannels, WebPaths, type Control, type DialogRequest, type DirListing, type MenuGroup } from "../protocol";
 import { useTransport } from "./electron-renderer";
 import { checkNotifications, onNotificationOpen, reportVisibility, setupNotifications } from "./notify";
 import { watchSharedImages } from "./share";
@@ -87,6 +87,11 @@ function newClientId(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** 이 앱의 바탕 경로 ("/" 또는 한 포트로 띄웠을 때 "/agent/"·"/mate/") */
+function appBase(): string {
+  return appBasePath(location.pathname);
+}
+
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -107,7 +112,7 @@ function showTokenForm(options: BootOptions, message: string): void {
   form.append(
     el("h1", undefined, options.title),
     el("p", "ws-token-message", message),
-    el("p", undefined, `Termux에서 ${options.urlCommand}을 실행하면 토큰이 들어 있는 주소가 나옵니다. 그 주소를 열거나, 아래에 토큰을 붙여 넣으세요.`),
+    el("p", undefined, `서버(Termux·VM)에서 ${appBase() === "/" ? options.urlCommand : "pi-web url"}을 실행하면 토큰이 들어 있는 주소가 나옵니다. 그 주소를 열거나, 아래에 토큰을 붙여 넣으세요.`),
   );
   const input = el("input");
   Object.assign(input, { name: "token", autocomplete: "off", spellcheck: false, placeholder: "토큰" });
@@ -127,11 +132,12 @@ async function start(options: BootOptions, token: string): Promise<void> {
   let ok: boolean;
   let version: string | undefined;
   try {
-    const response = await fetch(WebPaths.auth, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+    // 한 포트로 띄웠으면 이 앱은 /agent/·/mate/ 아래에 있다: 토큰 확인·연결 주소도 그 아래
+    const response = await fetch(`${appBase()}${WebPaths.auth.slice(1)}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
     ok = response.ok;
     version = ok ? ((await response.json().catch(() => ({}))) as { version?: string }).version : undefined;
   } catch {
-    showTokenForm(options, "서버에 닿지 않습니다. Termux에서 서버가 실행 중인지 확인하세요.");
+    showTokenForm(options, "서버에 닿지 않습니다. 서버(Termux·VM)에서 pi-web이 실행 중인지 확인하세요.");
     return;
   }
   if (!ok) {
@@ -143,7 +149,7 @@ async function start(options: BootOptions, token: string): Promise<void> {
   const client = newClientId();
   const shell = new ShellUi();
   const transport = new ResumableTransport(
-    (last) => `${scheme}//${location.host}${WebPaths.socket}?token=${encodeURIComponent(token)}&client=${client}&last=${last}`,
+    (last) => `${scheme}//${location.host}${appBase()}${WebPaths.socket.slice(1)}?token=${encodeURIComponent(token)}&client=${client}&last=${last}`,
     {
       onStatus: (status) => {
         shell.link(status);

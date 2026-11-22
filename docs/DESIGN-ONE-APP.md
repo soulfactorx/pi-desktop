@@ -231,7 +231,7 @@ interface PiDesktopPlugin {
 |---|---|
 | "프롬프트와 수치" 한 목록 (P3) | Pi 관리 "수치" 탭이 켜 둔 Agent·Mate 작업 공간의 항목(Agent 확장·데몬·앱, Mate 실행기·앱)도 보이고 "작업 공간"(Pi·Agent·Mate)으로 거른다. 그 작업 공간의 IPC 처리기를 그대로 불러 읽고 저장하므로 각 작업 공간 설정 화면과 같은 값이다. id는 `agent:<종류>:<원래 id>`로 감싸 저장할 곳을 가른다 |
 | 작업 공간을 새 창으로 (D4) | 메뉴바 "작업 공간 → Agent·Mate를 새 창으로 열기". 그 앱 화면을 창의 맨 위 페이지로 열고, preload가 주소로 API를 고른다. 창 안의 작업 공간과 함께 쓰고(같은 본체에 붙음), 알림을 누르면 새 창을 앞으로, 그 창을 보는 동안 메뉴바는 그 작업 공간 것이다 |
-| 휴대폰 웹 서버 한 프로세스 (P4) | `pi-web start`가 Pi Web 서버를 `--workspaces`로 띄우면 같은 프로세스에서 Agent·Mate 서버 묶음을 불러온다 (`web-shell/embed`). 각 묶음은 자기 electron 대체를 따로 가지고 자기 포트(8788·8789)에서 듣는다. 프로세스에 하나뿐인 것(명령줄 인자, `process.resourcesPath`, 신호, `process.exit`)은 embed 설정과 앱 이름의 환경 변수로 대신한다. 한 작업 공간이 뜨지 못해도 Pi Web은 그대로다. `pi-web agent start`처럼 따로 띄우는 것도 된다 |
+| 휴대폰 웹 서버 한 프로세스 (P4) | `pi-web start`가 Pi Web 서버를 `--workspaces`로 띄우면 같은 프로세스에서 Agent·Mate 서버 묶음을 불러온다 (`web-shell/embed`). 각 묶음은 자기 electron 대체를 따로 가지고, 0.7.33부터 따로 듣지 않고 Pi Web 포트의 `/agent/`·`/mate/` 아래에 붙는다 (DESIGN.md §5.11 한 포트, 그 전에는 8788·8789). 프로세스에 하나뿐인 것(명령줄 인자, `process.resourcesPath`, 신호, `process.exit`)은 embed 설정과 앱 이름의 환경 변수로 대신한다. 한 작업 공간이 뜨지 못해도 Pi Web은 그대로다. `pi-web agent start`처럼 따로 띄우는 것도 된다 |
 
 ### 0.7.x: 겹치던 설정 걷어내기
 

@@ -44,7 +44,7 @@ const { values: flags } = parseArgs({
     port: { type: "string" },
     host: { type: "string" },
     home: { type: "string" },
-    // Agent·Mate 웹 서버를 이 프로세스에서 함께 띄운다 (pi-web start). 각자 자기 포트(8788·8789)에서 듣는다
+    // Agent·Mate 웹 서버를 이 프로세스에서 함께 띄운다 (pi-web start). 같은 포트의 /agent/·/mate/ 아래에 붙는다
     workspaces: { type: "boolean" },
   },
 });
@@ -64,8 +64,9 @@ const loopbackOnly = isLoopbackAddress(listenHost);
 const embed: WebEmbed | undefined = flags.workspaces
   ? {
       host: listenHost,
-      agent: { port: Number(process.env.PI_WEB_AGENT_PORT ?? 8788), dataDir: join(dataDir, "..", "agent") },
-      mate: { port: Number(process.env.PI_WEB_MATE_PORT ?? 8789), dataDir: join(dataDir, "..", "mate") },
+      // 포트는 따로 듣지 않으므로 쓰지 않는다 (Pi Web 서버가 뜬 뒤 mount를 채운다)
+      agent: { port: port, dataDir: join(dataDir, "..", "agent") },
+      mate: { port: port, dataDir: join(dataDir, "..", "mate") },
       sshHostsFile: join(dataDir, "ssh-hosts.json"),
       urls: {},
       shutdowns: [],
@@ -277,4 +278,8 @@ async function loadWorkspaces(config: WebEmbed): Promise<void> {
     }
   }
 }
-if (embed) await loadWorkspaces(embed);
+if (embed) {
+  // Agent·Mate를 이 서버의 /agent/·/mate/ 아래에 붙인다 (한 포트). 대표 주소는 토큰을 뺀 것
+  embed.mount = { baseUrl: running.url.replace(/#.*$/, ""), tokenFile: join(dataDir, "token"), pushKeysFile: join(dataDir, "vapid.json") };
+  await loadWorkspaces(embed);
+}
