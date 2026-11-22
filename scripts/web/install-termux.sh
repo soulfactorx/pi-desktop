@@ -280,9 +280,26 @@ cat >"$bin_dir/pi-web" <<EOF
 PI_WEB_HOME="\${PI_WEB_HOME:-$PI_WEB_HOME}" exec sh "$PI_WEB_HOME/app/bin/pi-web" "\$@"
 EOF
 chmod 755 "$bin_dir/pi-web"
-case ":$PATH:" in *":$bin_dir:"*) ;; *) warn "$bin_dir가 PATH에 없습니다. 셸 설정에 추가하세요." ;; esac
+# PATH에 없으면 셸 설정에 더한다 (로그인 셸의 ~/.profile, 있으면 bash·zsh 설정). 이미 적혀 있으면 다시 쓰지 않는다
+path_added=""
+case ":$PATH:" in
+  *":$bin_dir:"*) ;;
+  *)
+    line="export PATH=\"$bin_dir:\$PATH\"  # pi-web"
+    for rc in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
+      # ~/.profile은 늘, bash·zsh 설정은 있을 때만
+      if [ "$rc" != "$HOME/.profile" ] && [ ! -f "$rc" ]; then continue; fi
+      if [ -f "$rc" ] && grep -qF "$bin_dir" "$rc"; then continue; fi
+      printf '\n%s\n' "$line" >>"$rc"
+      path_added="$path_added $rc"
+    done
+    ;;
+esac
 
 step "완료: Pi Web $(sh "$PI_WEB_HOME/app/bin/pi-web" version)"
+if [ -n "$path_added" ]; then
+  echo "PATH에 $bin_dir를 더했습니다 (${path_added# }). 새 터미널부터 pi-web을 쓸 수 있고, 지금 터미널에서는: . ~/.profile"
+fi
 cat <<'EOF'
   pi-web          Pi Desktop을 켜고 브라우저를 엽니다 (주소는 pi-web url)
   pi-web agent    Pi Desktop Agent를 켭니다 (승인·지식베이스·스킬·예약 작업)
