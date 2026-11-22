@@ -169,7 +169,8 @@ openrc_service() {
         echo "pidfile=/run/pi-web.pid"
         echo "output_log=\"$PI_WEB_HOME/data/service.log\""
         echo "error_log=\"$PI_WEB_HOME/data/service.log\""
-        echo "export HOME=\"$HOME\" PI_WEB_HOME=\"$PI_WEB_HOME\" PATH=\"$PATH\""
+        # PATH는 OpenRC 것(/usr/libexec/rc/bin: ebegin·eend·mountinfo 등) 뒤에 지금 셸의 것을 붙인다. 바꿔 쓰면 서비스가 켜지지 않는다
+        echo "export HOME=\"$HOME\" PI_WEB_HOME=\"$PI_WEB_HOME\" PATH=\"\$PATH:$PATH\""
         for v in $SERVICE_VARS; do
           eval "val=\${$v:-}"
           if [ -n "$val" ]; then echo "export $v=\"$val\""; fi
