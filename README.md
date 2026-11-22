@@ -80,6 +80,7 @@ curl -fsSL https://github.com/soulfactorx/pi-desktop/releases/latest/download/in
 | `pi-web log` | 서버 기록 |
 | `pi-web update` | 최신 릴리스의 묶음으로 바꿉니다 (켜져 있던 것은 다시 켭니다) |
 | `pi-web desktop\|agent\|mate start` | 하나만 따로 켭니다 |
+| `pi-web --host 0.0.0.0` | 이 기기 밖에서도 열게 모든 주소에서 듣습니다. VM 앱(Podroid 등)·사설망에서 포트 포워딩으로 열 때 필요합니다. 포트는 `--port 번호`. 환경 변수로 줄 때는 같은 줄에 씁니다 (`PI_WEB_HOST=0.0.0.0 pi-web start`) |
 
 웹 묶음(`pi-web.tar.gz`)과 설치 스크립트는 Pi Desktop 릴리스(Latest)에 함께 올라갑니다. 갤럭시 설정·내장 터미널 같은 자세한 내용은 [apps/desktop 설명서의 "Android 휴대폰에서 쓰기"](apps/desktop/README.md#android-휴대폰에서-쓰기-웹-버전-pi-web)에 있습니다.
 예전 포크(`soulfactorx/pi-desktop-mobile`)에서 설치했다면 위 설치 명령을 한 번 다시 실행해 이 저장소로 옮깁니다.
