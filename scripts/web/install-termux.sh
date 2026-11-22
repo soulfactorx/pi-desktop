@@ -97,6 +97,12 @@ tar -xzf "$work/pi-web.tar.gz" -C "$work"
 # 4. 바꿔 넣기: 켜져 있는 서버(Pi Desktop·Agent·Mate)는 끄고 설치 뒤 다시 켠다. 전에 빌드한 node-pty(node_modules)는 옮겨 온다
 step "설치 ($PI_WEB_HOME/app)"
 mkdir -p "$PI_WEB_HOME"
+# systemd 서비스(pi-web service install)로 돌고 있으면 서비스로 멈추고 다시 켠다 (직접 끄면 systemd가 다시 띄운다)
+service_on=0
+if [ "$TERMUX" = 0 ] && command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet pi-web.service 2>/dev/null; then
+  service_on=1
+  systemctl --user stop pi-web.service || true
+fi
 was_running=""
 for app in desktop agent mate; do
   case "$app" in
@@ -164,6 +170,7 @@ cat <<'EOF'
   pi-web all      세 앱을 모두 켭니다
   pi-web stop     서버를 끕니다 (Pi 세션은 계속 돕니다. agent·mate·all도 같다: pi-web mate stop)
   pi-web update   최신 버전으로 업데이트합니다
+  pi-web service install   (리눅스 서버·클라우드 VM) 부팅하면 켜지게 systemd 서비스로 등록합니다
 
 휴대폰이 Termux를 멈추지 않게 하려면 (갤럭시 기준):
   - 설정 → 애플리케이션 → Termux → 배터리 → "제한 없음"
@@ -172,7 +179,9 @@ cat <<'EOF'
 LLM 로그인: 화면의 "프로바이더"에서 API 키를 넣습니다. OAuth 로그인(/login)은 --terminal로 설치하면 내장 터미널에서 됩니다.
 EOF
 
-if [ -n "$was_running" ]; then
+if [ "$service_on" = 1 ]; then
+  systemctl --user start pi-web.service && echo "서비스(pi-web.service)로 다시 켰습니다." || warn "서비스를 다시 켜지 못했습니다 (systemctl --user status pi-web.service)"
+elif [ -n "$was_running" ]; then
   # 업데이트: 켜져 있던 것만 다시 켠다. Pi Web이 켜져 있었으면 Agent·Mate 작업 공간과 한 프로세스로 켠다 (브라우저도 그것만 연다)
   case " $was_running " in
     *" desktop "*)

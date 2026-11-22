@@ -10,9 +10,11 @@
 #       mate    Mate만 따로 — 임무 시간표·인박스·텔레그램 (포트 8789)
 #       all     (없음)과 같다
 # 명령: start(기본: 켜고 브라우저를 연다) | run(앞에서 실행) | stop | restart | status | url | open | log
+#       service install|uninstall|status (리눅스 서버·클라우드 VM: 부팅하면 systemd가 켠다)
 #       update | uninstall | version (앱과 상관없이 묶음 전체)
 #
-# 환경 변수: PI_WEB_PORT(앱마다 기본값), PI_WEB_HOST(기본 127.0.0.1), PI_WEB_HOME(기본 ~/.pi-web), PI_WEB_NO_OPEN=1
+# 환경 변수: PI_WEB_PORT(앱마다 기본값), PI_WEB_HOST(기본 127.0.0.1, 다른 기기에서 열려면 0.0.0.0), PI_WEB_HOME(기본 ~/.pi-web), PI_WEB_NO_OPEN=1
+#           PI_WEB_TLS_CERT·PI_WEB_TLS_KEY(HTTPS 인증서·키), PI_WEB_PUBLIC_HOST(접속 주소에 쓸 도메인·공인 IP)
 set -eu
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -83,10 +85,85 @@ open_url() {
 show_url() {
   if [ -f "$URL_FILE" ]; then
     echo "$NAME 주소: $(cat "$URL_FILE")"
+    # 모든 주소(0.0.0.0)에서 들으면 다른 기기에서 열 주소도 보인다
+    if [ -s "$DATA_DIR/urls" ]; then
+      echo "  다른 기기에서:"
+      sed 's/^/    /' "$DATA_DIR/urls"
+    fi
   else
     if [ "$APP" = desktop ]; then hint="pi-web desktop start"; else hint="pi-web $APP start"; fi
     echo "$NAME: 아직 주소가 없습니다. $hint로 켜세요."
   fi
+}
+
+# 리눅스 서버(클라우드 VM)에서 부팅하면 켜지게 systemd 사용자 서비스로 등록한다.
+# 지금 셸의 PI_WEB_* 설정(주소·포트·인증서)을 서비스에 적어 둔다. 바꾸려면 설정한 뒤 다시 install한다.
+SERVICE=pi-web.service
+service_cmd() {
+  sub=${1:-status}
+  if ! command -v systemctl >/dev/null 2>&1 || [ -n "${TERMUX_VERSION:-}" ]; then
+    echo "systemd가 없는 환경입니다. Termux라면 Termux:Boot 앱의 ~/.termux/boot/ 스크립트에 pi-web start를 넣으세요." >&2
+    exit 1
+  fi
+  unit_dir=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
+  case "$sub" in
+    install)
+      mkdir -p "$unit_dir"
+      # 따로 띄운 서버가 있으면 끄고 서비스로 넘긴다
+      for a in desktop agent mate; do
+        use_app "$a"
+        if running; then stop; fi
+      done
+      envs=""
+      for v in PI_WEB_HOST PI_WEB_PORT PI_WEB_AGENT_PORT PI_WEB_MATE_PORT PI_WEB_TLS_CERT PI_WEB_TLS_KEY PI_WEB_PUBLIC_HOST; do
+        eval "val=\${$v:-}"
+        [ -n "$val" ] && envs="${envs}Environment=\"$v=$val\"
+"
+      done
+      {
+        echo "[Unit]"
+        echo "Description=Pi Web (Pi Desktop·Agent·Mate 웹 서버)"
+        echo "After=network-online.target"
+        echo "Wants=network-online.target"
+        echo
+        echo "[Service]"
+        echo "Type=simple"
+        echo "Environment=\"PI_WEB_HOME=$PI_WEB_HOME\""
+        echo "Environment=\"PATH=$PATH\""
+        printf '%s' "$envs"
+        echo "ExecStart=$(command -v sh) $ROOT/bin/pi-web run"
+        echo "Restart=on-failure"
+        echo "RestartSec=5"
+        echo
+        echo "[Install]"
+        echo "WantedBy=default.target"
+      } >"$unit_dir/$SERVICE"
+      rm -f "$PI_WEB_HOME/data/url" "$PI_WEB_HOME/data/urls"
+      systemctl --user daemon-reload
+      systemctl --user enable --now "$SERVICE"
+      # 로그인하지 않아도(부팅만 해도) 사용자 서비스가 돌게 한다. 권한이 없으면 안내만 한다
+      if command -v loginctl >/dev/null 2>&1 && [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" != yes ]; then
+        loginctl enable-linger "$(id -un)" 2>/dev/null ||
+          echo "주의: 부팅만 해도 켜지려면 한 번 실행하세요: sudo loginctl enable-linger $(id -un)" >&2
+      fi
+      i=0
+      use_app desktop
+      while [ ! -f "$URL_FILE" ] && [ "$i" -lt 75 ]; do i=$((i + 1)); sleep 0.2; done
+      echo "서비스로 등록했습니다. 부팅하면 켜집니다 (systemctl --user status $SERVICE)."
+      show_url
+      ;;
+    uninstall)
+      systemctl --user disable --now "$SERVICE" 2>/dev/null || true
+      rm -f "$unit_dir/$SERVICE"
+      systemctl --user daemon-reload
+      echo "서비스를 지웠습니다. 서버도 껐습니다 (Pi 세션과 Mate 실행기는 계속 돕니다)."
+      ;;
+    status) systemctl --user status "$SERVICE" --no-pager || true ;;
+    *)
+      echo "pi-web service install|uninstall|status" >&2
+      exit 1
+      ;;
+  esac
 }
 
 # 한 프로세스로 띄울 때 Pi Web 서버에 주는 인자 (Agent·Mate 서버를 함께 불러온다)
@@ -180,7 +257,10 @@ case "$cmd" in
   start) start "$@" ;;
   run)
     mkdir -p "$DATA_DIR"
+    rm -f "$URL_FILE"
     wake_lock
+    # systemd 등 앞에서 띄워도 status·stop이 알아보게 pid를 남긴다 (exec는 같은 pid를 쓴다)
+    echo $$ >"$PID_FILE"
     PI_WEB_DATA="$DATA_DIR" exec node "$APP_DIR/server.mjs" --port "$PORT" ${PI_WEB_HOST:+--host "$PI_WEB_HOST"} $EXTRA_ARGS "$@"
     ;;
   stop) stop ;;
@@ -189,6 +269,7 @@ case "$cmd" in
     start "$@"
     ;;
   status) status ;;
+  service) service_cmd "$@" ;;
   url) show_url ;;
   open) open_url ;;
   log | logs) tail -n 100 -f "$LOG" ;;
@@ -210,7 +291,7 @@ case "$cmd" in
     echo "지웠습니다. 토큰·SSH 호스트 등 데이터($PI_WEB_HOME/data, agent, mate)는 남겨 두었습니다. 함께 지우려면: rm -rf $PI_WEB_HOME"
     ;;
   version | --version | -v) node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).version)' "$ROOT/package.json" ;;
-  help | --help | -h) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' ;;
+  help | --help | -h) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' ;;
   *)
     echo "모르는 명령입니다: $cmd (pi-web help)" >&2
     exit 1
