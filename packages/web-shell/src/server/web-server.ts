@@ -4,13 +4,13 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { clickMenu, clickNotification, hub, onBackgroundNotify } from "../electron/main";
 import { CLICK_OPEN, ShellChannels, type DirEntry, type DirListing } from "../protocol";
-import { listenWebServer } from "./http-server";
+import { listenWebServer, type RunningServer, type WebMountOptions } from "./http-server";
 import { PushCenter } from "./push";
 import { webDefault } from "../tunables-defs";
 
 export { hub };
 export { bearerToken, isLoopbackAddress, loadOrCreateToken, requestAllowed, tokenMatches } from "./auth";
-export { accessUrls, listenWebServer, publicOptionsFromEnv, type HttpServerOptions, type PublicOptions, type RunningServer } from "./http-server";
+export { accessUrls, listenWebServer, mountFor, publicOptionsFromEnv, type HttpServerOptions, type PublicOptions, type RunningServer, type WebMountOptions } from "./http-server";
 
 export interface WebServerOptions {
   /** 화면에 보일 이름 (hello) */
@@ -22,6 +22,11 @@ export interface WebServerOptions {
   dataDir: string;
   /** 화면 파일 (vite 결과) */
   publicDir: string;
+  /**
+   * 한 포트로 (pi-web start): Pi Web 서버의 경로(/agent/, /mate/) 아래에 붙는다.
+   * 한 사이트라 휴대폰 알림 구독도 하나다: 알림 키(VAPID)를 Pi Web 것으로 함께 쓴다
+   */
+  mount?: WebMountOptions & { pushKeysFile: string };
 }
 
 /** 휴대폰에서 올린 파일 하나의 크기 한도 (base64 전) */
@@ -32,10 +37,11 @@ const MAX_UPLOAD_BYTES = webDefault("webShell.uploadMaxMb") * 1024 * 1024;
  * 앱 main 코드는 electron 대체 모듈(electron/main.ts)로 hub에 처리기를 건다.
  * 서버가 뜨면 토큰이 든 주소를 dataDir/url에 쓴다 (실행 명령이 읽어 보여 준다).
  */
-export async function startWebServer(options: WebServerOptions): Promise<{ server: Server; url: string; close: () => void }> {
+export async function startWebServer(options: WebServerOptions): Promise<RunningServer & { server?: Server }> {
   registerShellHandlers(options.dataDir);
-  const push = new PushCenter(options.dataDir);
-  registerPush(push, options.app);
+  const push = new PushCenter(options.dataDir, undefined, undefined, options.mount?.pushKeysFile);
+  // 알림을 누르면 이 앱의 화면으로 (한 포트면 /agent/ 같은 경로)
+  registerPush(push, options.app, options.mount?.prefix ?? "/");
 
   const running = await listenWebServer({
     ...options,
@@ -69,17 +75,17 @@ export async function startWebServer(options: WebServerOptions): Promise<{ serve
  * 웹 푸시: 브라우저가 알림을 허용하면 구독을 받아 두고, 보는 탭이 없을 때 앱의 알림(Notification)을 휴대폰 알림으로 보낸다.
  * 알림 제목 앞에 앱 이름을 붙인다 (Pi Web·Agent·Mate가 같은 휴대폰에서 알림을 보내므로).
  */
-function registerPush(push: PushCenter, app: string): void {
+function registerPush(push: PushCenter, app: string, scopePath: string): void {
   hub.override(ShellChannels.pushKey, () => push.publicKey());
   hub.override(ShellChannels.pushSubscribe, (_event, subscription: unknown) => {
     push.subscribe(subscription as Parameters<PushCenter["subscribe"]>[0]);
     return push.count;
   });
   hub.override(ShellChannels.pushUnsubscribe, (_event, endpoint: string) => push.unsubscribe(String(endpoint)));
-  hub.override(ShellChannels.pushTest, async () => ({ sent: await push.send({ title: `${app} · 알림 시험`, body: "휴대폰 알림이 잘 옵니다." }), total: push.count }));
+  hub.override(ShellChannels.pushTest, async () => ({ sent: await push.send({ title: `${app} · 알림 시험`, body: "휴대폰 알림이 잘 옵니다.", url: scopePath }), total: push.count }));
   onBackgroundNotify((note) => {
     void push
-      .send({ title: note.title ? `${app} · ${note.title}` : app, ...(note.body ? { body: note.body } : {}), ...(note.clickId ? { open: `${CLICK_OPEN}${note.clickId}` } : {}) })
+      .send({ title: note.title ? `${app} · ${note.title}` : app, url: scopePath, ...(note.body ? { body: note.body } : {}), ...(note.clickId ? { open: `${CLICK_OPEN}${note.clickId}` } : {}) })
       .catch(() => 0);
   });
   hub.override(ShellChannels.notificationClick, (_event, id: string) => clickNotification(String(id)));

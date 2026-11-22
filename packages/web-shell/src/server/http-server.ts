@@ -1,5 +1,6 @@
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
 import { createServer as createHttpsServer } from "node:https";
 import { networkInterfaces } from "node:os";
 import { join } from "node:path";
@@ -28,6 +29,49 @@ export interface HttpServerOptions {
   accept?: (url: URL) => boolean;
   /** 받아들인 WebSocket 연결 */
   connect: (ws: WebSocket, url: URL) => void;
+  /**
+   * 한 포트로 (pi-web start): 자기 포트에서 듣지 않고 Pi Web 서버의 이 경로(예: /agent/) 아래에 붙는다.
+   * 토큰은 Pi Web 것을 함께 쓴다 (한 사이트라 브라우저가 기억하는 토큰도 하나다). port·host는 쓰지 않는다
+   */
+  mount?: WebMountOptions;
+}
+
+export interface WebMountOptions {
+  /** 붙을 경로 ("/agent/") */
+  prefix: string;
+  /** Pi Web의 토큰 파일 */
+  tokenFile: string;
+  /** Pi Web의 대표 접속 주소 (토큰 없이, "/"로 끝남) */
+  baseUrl: string;
+}
+
+/** 한 포트에 붙은 다른 앱 서버. 프로세스에 하나 (Agent·Mate 묶음은 web-shell을 따로 가지므로 globalThis에 둔다) */
+interface WebMount {
+  prefix: string;
+  request: (req: IncomingMessage, res: ServerResponse) => void;
+  upgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
+}
+
+const MOUNTS_KEY = "__piWebMounts";
+
+function webMounts(): WebMount[] {
+  const g = globalThis as Record<string, unknown>;
+  if (!Array.isArray(g[MOUNTS_KEY])) g[MOUNTS_KEY] = [];
+  return g[MOUNTS_KEY] as WebMount[];
+}
+
+/** 이 경로를 맡은 붙은 서버 (경로가 접두사 자체이거나 그 아래) */
+export function mountFor(path: string): { mount: WebMount; exact: boolean } | undefined {
+  for (const mount of webMounts()) {
+    if (path === mount.prefix.slice(0, -1)) return { mount, exact: true };
+    if (path.startsWith(mount.prefix)) return { mount, exact: false };
+  }
+  return undefined;
+}
+
+/** 붙은 서버에 넘길 때 경로에서 접두사를 뗀다 ("/agent/ws?x" → "/ws?x") */
+export function stripPrefix(url: string, prefix: string): string {
+  return url.startsWith(prefix) ? `/${url.slice(prefix.length)}` : url;
 }
 
 /**
@@ -80,7 +124,8 @@ export function accessUrls(
 }
 
 export interface RunningServer {
-  server: Server;
+  /** 듣는 서버 (한 포트로 붙었으면 없다) */
+  server?: Server;
   /** 토큰이 든 접속 주소 (dataDir/url에도 쓴다) */
   url: string;
   close: () => void;
@@ -94,11 +139,26 @@ export interface RunningServer {
  * 서버가 뜨면 토큰이 든 주소를 dataDir/url에 쓴다 (pi-web url이 읽어 보여 준다).
  */
 export function listenWebServer(options: HttpServerOptions, pub: PublicOptions = publicOptionsFromEnv()): Promise<RunningServer> {
-  const token = loadOrCreateToken(join(options.dataDir, "token"));
+  const token = loadOrCreateToken(options.mount?.tokenFile ?? join(options.dataDir, "token"));
   const loopbackOnly = isLoopbackAddress(options.host);
   const allowed = (req: IncomingMessage) => requestAllowed({ host: req.headers.host, origin: req.headers.origin }, loopbackOnly);
 
   const handler = (req: IncomingMessage, res: ServerResponse) => {
+    // 한 포트로 붙은 Agent·Mate (/agent/, /mate/): 주소·출처를 확인한 뒤 그 서버에 넘긴다
+    const mounted = options.mount ? undefined : mountFor(req.url?.split("?")[0] ?? "");
+    if (mounted) {
+      if (!allowed(req)) {
+        res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" }).end("허용하지 않는 주소입니다");
+        return;
+      }
+      if (mounted.exact) {
+        res.writeHead(301, { Location: `${mounted.mount.prefix}${req.url?.includes("?") ? req.url.slice(req.url.indexOf("?")) : ""}` }).end();
+        return;
+      }
+      req.url = stripPrefix(req.url ?? "/", mounted.mount.prefix);
+      mounted.mount.request(req, res);
+      return;
+    }
     // 다른 앱이 보낸 공유는 Origin이 이 서버가 아니므로 주소(Host)만 본다
     if (handleShareRequest(req, res, requestAllowed({ host: req.headers.host }, loopbackOnly))) return;
     if (!allowed(req)) {
@@ -123,10 +183,8 @@ export function listenWebServer(options: HttpServerOptions, pub: PublicOptions =
       if (!res.headersSent) res.writeHead(500).end();
     });
   };
-  const server: Server = pub.tls ? createHttpsServer({ cert: readFileSync(pub.tls.cert), key: readFileSync(pub.tls.key) }, handler) : createServer(handler);
-
   const sockets = new WebSocketServer({ noServer: true, maxPayload: options.maxPayload });
-  server.on("upgrade", (req, socket, head) => {
+  const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     if (url.pathname !== WebPaths.socket || !allowed(req) || !tokenMatches(token, url.searchParams.get("token")) || options.accept?.(url) === false) {
       socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
@@ -144,6 +202,41 @@ export function listenWebServer(options: HttpServerOptions, pub: PublicOptions =
       ws.once("close", () => clearInterval(timer));
       options.connect(ws, url);
     });
+  };
+
+  // 한 포트로: Pi Web 서버의 경로 아래에 붙고 자기 포트에서는 듣지 않는다
+  if (options.mount) {
+    const { prefix, baseUrl } = options.mount;
+    const url = `${baseUrl}${prefix.slice(1)}#token=${token}`;
+    // 토큰은 Pi Web 것을 쓰므로 이 앱의 데이터 폴더가 아직 없을 수 있다
+    mkdirSync(options.dataDir, { recursive: true });
+    writeFileSync(join(options.dataDir, "url"), `${url}\n`, { mode: 0o600 });
+    rmSync(join(options.dataDir, "urls"), { force: true });
+    webMounts().push({ prefix, request: handler, upgrade: onUpgrade });
+    const list = webMounts();
+    return Promise.resolve({
+      url,
+      close: () => {
+        sockets.close();
+        const at = list.findIndex((m) => m.prefix === prefix);
+        if (at >= 0) list.splice(at, 1);
+      },
+    });
+  }
+
+  const server: Server = pub.tls ? createHttpsServer({ cert: readFileSync(pub.tls.cert), key: readFileSync(pub.tls.key) }, handler) : createServer(handler);
+  server.on("upgrade", (req, socket, head) => {
+    const mounted = mountFor(new URL(req.url ?? "/", "http://localhost").pathname);
+    if (mounted && !mounted.exact) {
+      if (!allowed(req)) {
+        socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+        return;
+      }
+      req.url = stripPrefix(req.url ?? "/", mounted.mount.prefix);
+      mounted.mount.upgrade(req, socket, head);
+      return;
+    }
+    onUpgrade(req, socket, head);
   });
 
   return new Promise((resolvePromise, reject) => {

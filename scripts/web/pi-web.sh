@@ -3,7 +3,7 @@
 #
 #   pi-web [앱] [명령]
 #
-# 앱:   (없음)  Pi Web과 Agent·Mate 작업 공간을 한 프로세스로 (포트 8787·8788·8789). 화면 아래 작업 공간 막대로 바꾼다
+# 앱:   (없음)  Pi Web과 Agent·Mate 작업 공간을 한 프로세스·한 포트로 (8787, Agent는 /agent/, Mate는 /mate/). 화면 아래 작업 공간 막대로 바꾼다
 #               log·open·update 등 그 밖의 명령은 Pi Web
 #       desktop Pi Web만 — Pi 관리·로그인·채팅 (포트 8787)
 #       agent   Agent만 따로 — 승인·지식베이스·스킬·예약 작업 (포트 8788)
@@ -93,6 +93,13 @@ show_url() {
       echo "  다른 기기에서:"
       sed 's/^/    /' "$DATA_DIR/urls"
     fi
+  elif [ "$APP" != desktop ] && [ -f "$PI_WEB_HOME/data/url" ]; then
+    # 한 프로세스(pi-web start)면 Agent·Mate는 Pi Web 주소의 /agent/·/mate/에 붙어 있다 (토큰도 같다)
+    echo "$NAME 주소: $(sed "s|/#|/$APP/#|" "$PI_WEB_HOME/data/url")"
+    if [ -s "$PI_WEB_HOME/data/urls" ]; then
+      echo "  다른 기기에서:"
+      sed "s|/#|/$APP/#|; s/^/    /" "$PI_WEB_HOME/data/urls"
+    fi
   else
     if [ "$APP" = desktop ]; then hint="pi-web desktop start"; else hint="pi-web $APP start"; fi
     echo "$NAME: 아직 주소가 없습니다. $hint로 켜세요."
@@ -103,7 +110,7 @@ show_url() {
 # 지금 셸의 PI_WEB_* 설정(주소·포트·인증서)을 서비스에 적어 둔다. 바꾸려면 설정한 뒤 다시 install한다.
 SERVICE=pi-web.service
 # 서비스에 적어 둘 PI_WEB_* 설정 (지금 셸의 값)
-SERVICE_VARS="PI_WEB_HOST PI_WEB_PORT PI_WEB_AGENT_PORT PI_WEB_MATE_PORT PI_WEB_TLS_CERT PI_WEB_TLS_KEY PI_WEB_PUBLIC_HOST"
+SERVICE_VARS="PI_WEB_HOST PI_WEB_PORT PI_WEB_TLS_CERT PI_WEB_TLS_KEY PI_WEB_PUBLIC_HOST"
 
 # OpenRC (Alpine 등 systemd가 없는 리눅스): /etc/init.d/pi-web. root(또는 sudo·doas)가 필요하다
 openrc_service() {

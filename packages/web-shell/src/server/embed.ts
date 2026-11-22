@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export interface EmbeddedApp {
+  /** 따로 띄울 때의 포트 (한 포트로 붙으면 쓰지 않는다) */
   port: number;
   dataDir: string;
 }
@@ -18,8 +19,13 @@ export interface WebEmbed {
   mate?: EmbeddedApp;
   /** Pi Web의 SSH 호스트 파일 (Agent·Mate가 함께 쓴다) */
   sshHostsFile?: string;
-  /** 불러온 서버가 뜬 뒤 알리는 접속 주소 (토큰 포함) */
+  /** 불러온 서버가 뜬 뒤 알리는 화면 주소 (한 포트면 "/agent/" 같은 경로) */
   urls: Partial<Record<"agent" | "mate", string>>;
+  /**
+   * 한 포트로 (Pi Web 서버가 뜬 뒤 채운다): Agent·Mate는 자기 포트에서 듣지 않고 Pi Web 서버의 /agent/·/mate/ 아래에 붙는다.
+   * 토큰·알림 키를 Pi Web 것으로 함께 쓴다
+   */
+  mount?: { baseUrl: string; tokenFile: string; pushKeysFile: string };
   /** Pi Web 서버가 끌 때 함께 부른다 */
   shutdowns: Array<() => void>;
 }

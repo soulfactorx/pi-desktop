@@ -75,7 +75,7 @@ curl -fsSL https://github.com/soulfactorx/pi-desktop/releases/latest/download/in
 
 | 명령 | 하는 일 |
 |---|---|
-| `pi-web start` | Pi Web과 Agent·Mate 작업 공간을 한 프로세스로 켜고 브라우저를 엽니다 (포트 8787·8788·8789). 화면 아래 막대에서 작업 공간을 바꿉니다 |
+| `pi-web start` | Pi Web과 Agent·Mate 작업 공간을 한 프로세스로 켜고 브라우저를 엽니다 (포트 8787 하나, Agent는 `/agent/`, Mate는 `/mate/`). 화면 아래 막대에서 작업 공간을 바꿉니다 |
 | `pi-web stop` · `restart` · `status` · `url` | 끄기 · 다시 켜기 · 상태 · 접속 주소(토큰 포함) |
 | `pi-web log` | 서버 기록 |
 | `pi-web update` | 최신 릴리스의 묶음으로 바꿉니다 (켜져 있던 것은 다시 켭니다) |
@@ -97,9 +97,9 @@ curl -fsSL https://github.com/soulfactorx/pi-desktop/releases/latest/download/in
 
 | 방법 | 설정 | 브라우저 주소 |
 |---|---|---|
-| SSH 터널 (가장 간단) | 그대로 (`127.0.0.1`에서만 듣는다) | `ssh -L 8787:localhost:8787 -L 8788:localhost:8788 -L 8789:localhost:8789 VM` 뒤 `http://localhost:8787/#token=…` |
+| SSH 터널 (가장 간단) | 그대로 (`127.0.0.1`에서만 듣는다) | `ssh -L 8787:localhost:8787 VM` 뒤 `http://localhost:8787/#token=…` |
 | 사설망 (Tailscale 등) | `PI_WEB_HOST=0.0.0.0` | `http://VM의-사설망-주소:8787/#token=…` |
-| HTTPS로 바로 열기 | `PI_WEB_HOST=0.0.0.0`, `PI_WEB_TLS_CERT`·`PI_WEB_TLS_KEY`(PEM 인증서·키), `PI_WEB_PUBLIC_HOST`(인증서의 도메인) | `https://도메인:8787/#token=…` (방화벽에서 8787~8789를 연다) |
+| HTTPS로 바로 열기 | `PI_WEB_HOST=0.0.0.0`, `PI_WEB_TLS_CERT`·`PI_WEB_TLS_KEY`(PEM 인증서·키), `PI_WEB_PUBLIC_HOST`(인증서의 도메인) | `https://도메인:8787/#token=…` (방화벽에서 8787을 연다) |
 
 알림·홈 화면 앱 설치·클립보드 같은 브라우저 기능은 HTTPS나 localhost(SSH 터널)에서만 됩니다. 인증서는 Let's Encrypt(certbot)나 `tailscale cert`로 받습니다. 서버가 인증서 파일을 읽을 수 있어야 합니다.
 

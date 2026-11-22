@@ -40,7 +40,16 @@ export class PushCenter {
     private readonly subject = "https://github.com/soulfactorx/pi-desktop",
     private readonly sender: (subscription: PushSubscription, payload: string, options: webpush.RequestOptions) => Promise<unknown> = (s, p, o) =>
       webpush.sendNotification(s, p, o),
+    /** 알림 키 파일. 한 포트로 붙은 앱은 Pi Web 것을 함께 쓴다 (한 사이트에는 구독이 하나뿐이라 키가 같아야 한다) */
+    private readonly keysFile = join(dataDir, "vapid.json"),
   ) {}
+
+  /**
+   * 구독 목록 파일. 남의 알림 키를 쓰면(한 포트로 붙음) 예전 구독(자기 키·다른 포트)은 보낼 수 없으므로 따로 둔다
+   */
+  private subscriptionsFile(): string {
+    return join(this.dataDir, this.keysFile === join(this.dataDir, "vapid.json") ? "push-subscriptions.json" : "push-subscriptions-shared.json");
+  }
 
   publicKey(): string {
     return this.vapid().publicKey;
@@ -87,7 +96,7 @@ export class PushCenter {
 
   private vapid(): VapidKeys {
     if (this.keys) return this.keys;
-    const path = join(this.dataDir, "vapid.json");
+    const path = this.keysFile;
     if (existsSync(path)) {
       try {
         const keys = JSON.parse(readFileSync(path, "utf8")) as Partial<VapidKeys>;
@@ -105,7 +114,7 @@ export class PushCenter {
   private list(): PushSubscription[] {
     if (this.subscriptions) return this.subscriptions;
     try {
-      const raw = JSON.parse(readFileSync(join(this.dataDir, "push-subscriptions.json"), "utf8")) as unknown;
+      const raw = JSON.parse(readFileSync(this.subscriptionsFile(), "utf8")) as unknown;
       this.subscriptions = Array.isArray(raw) ? raw.filter(isSubscription) : [];
     } catch {
       this.subscriptions = [];
@@ -115,7 +124,7 @@ export class PushCenter {
 
   private save(list: PushSubscription[]): void {
     this.subscriptions = list;
-    writeSecret(join(this.dataDir, "push-subscriptions.json"), `${JSON.stringify(list, null, 2)}\n`);
+    writeSecret(this.subscriptionsFile(), `${JSON.stringify(list, null, 2)}\n`);
   }
 }
 
