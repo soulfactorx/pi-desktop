@@ -20,6 +20,9 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 PI_WEB_HOME=${PI_WEB_HOME:-$HOME/.pi-web}
 export PI_WEB_HOME
+# 설치 스크립트가 받은 Node.js·사용자 npm 위치 (리눅스 서버). systemd 서비스로 떠도 같은 환경이 되게 여기서 읽는다
+# shellcheck disable=SC1091
+if [ -f "$PI_WEB_HOME/env" ]; then . "$PI_WEB_HOME/env"; fi
 
 # 앱을 고른다: 서버 폴더, 데이터 폴더, 포트, 이름
 use_app() {
@@ -99,10 +102,84 @@ show_url() {
 # 리눅스 서버(클라우드 VM)에서 부팅하면 켜지게 systemd 사용자 서비스로 등록한다.
 # 지금 셸의 PI_WEB_* 설정(주소·포트·인증서)을 서비스에 적어 둔다. 바꾸려면 설정한 뒤 다시 install한다.
 SERVICE=pi-web.service
+# 서비스에 적어 둘 PI_WEB_* 설정 (지금 셸의 값)
+SERVICE_VARS="PI_WEB_HOST PI_WEB_PORT PI_WEB_AGENT_PORT PI_WEB_MATE_PORT PI_WEB_TLS_CERT PI_WEB_TLS_KEY PI_WEB_PUBLIC_HOST"
+
+# OpenRC (Alpine 등 systemd가 없는 리눅스): /etc/init.d/pi-web. root(또는 sudo·doas)가 필요하다
+openrc_service() {
+  sub=$1
+  as_root=""
+  if [ "$(id -u)" != 0 ]; then
+    if command -v sudo >/dev/null 2>&1; then as_root=sudo; elif command -v doas >/dev/null 2>&1; then as_root=doas; else
+      echo "OpenRC 서비스는 root 권한이 필요합니다 (sudo·doas도 없습니다)." >&2
+      exit 1
+    fi
+  fi
+  init=/etc/init.d/pi-web
+  case "$sub" in
+    install)
+      for a in desktop agent mate; do
+        use_app "$a"
+        if running; then stop; fi
+      done
+      rm -f "$PI_WEB_HOME/data/url" "$PI_WEB_HOME/data/urls"
+      tmp=$(mktemp)
+      {
+        echo "#!/sbin/openrc-run"
+        echo "# pi-web service install이 만듦 (Pi Desktop·Agent·Mate 웹 서버)"
+        echo "description=\"Pi Web\""
+        echo "command=$(command -v sh)"
+        echo "command_args=\"$ROOT/bin/pi-web run\""
+        echo "command_user=\"$(id -un)\""
+        echo "command_background=true"
+        echo "pidfile=/run/pi-web.pid"
+        echo "output_log=\"$PI_WEB_HOME/data/service.log\""
+        echo "error_log=\"$PI_WEB_HOME/data/service.log\""
+        echo "export HOME=\"$HOME\" PI_WEB_HOME=\"$PI_WEB_HOME\" PATH=\"$PATH\""
+        for v in $SERVICE_VARS; do
+          eval "val=\${$v:-}"
+          if [ -n "$val" ]; then echo "export $v=\"$val\""; fi
+        done
+        echo "depend() { need net; after firewall; }"
+      } >"$tmp"
+      mkdir -p "$PI_WEB_HOME/data"
+      $as_root install -m 755 "$tmp" "$init"
+      rm -f "$tmp"
+      $as_root rc-update add pi-web default >/dev/null
+      $as_root rc-service pi-web restart
+      i=0
+      use_app desktop
+      while [ ! -f "$URL_FILE" ] && [ "$i" -lt 75 ]; do i=$((i + 1)); sleep 0.2; done
+      echo "OpenRC 서비스로 등록했습니다. 부팅하면 켜집니다 (rc-service pi-web status)."
+      show_url
+      ;;
+    uninstall)
+      $as_root rc-service pi-web stop 2>/dev/null || true
+      $as_root rc-update del pi-web default 2>/dev/null || true
+      $as_root rm -f "$init"
+      echo "서비스를 지웠습니다. 서버도 껐습니다 (Pi 세션과 Mate 실행기는 계속 돕니다)."
+      ;;
+    status) $as_root rc-service pi-web status || true ;;
+    *)
+      echo "pi-web service install|uninstall|status" >&2
+      exit 1
+      ;;
+  esac
+}
+
 service_cmd() {
   sub=${1:-status}
-  if ! command -v systemctl >/dev/null 2>&1 || [ -n "${TERMUX_VERSION:-}" ]; then
-    echo "systemd가 없는 환경입니다. Termux라면 Termux:Boot 앱의 ~/.termux/boot/ 스크립트에 pi-web start를 넣으세요." >&2
+  if [ -n "${TERMUX_VERSION:-}" ]; then
+    echo "Termux에서는 Termux:Boot 앱의 ~/.termux/boot/ 스크립트에 pi-web start를 넣으세요." >&2
+    exit 1
+  fi
+  # systemd가 PID 1이 아니면(Alpine·컨테이너 등) OpenRC를 쓴다
+  if ! { command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; }; then
+    if command -v rc-service >/dev/null 2>&1; then
+      openrc_service "$sub"
+      return
+    fi
+    echo "systemd·OpenRC가 없는 환경입니다. 부팅할 때 pi-web start를 실행하게 직접 등록하세요 (예: crontab의 @reboot)." >&2
     exit 1
   fi
   unit_dir=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
@@ -115,7 +192,7 @@ service_cmd() {
         if running; then stop; fi
       done
       envs=""
-      for v in PI_WEB_HOST PI_WEB_PORT PI_WEB_AGENT_PORT PI_WEB_MATE_PORT PI_WEB_TLS_CERT PI_WEB_TLS_KEY PI_WEB_PUBLIC_HOST; do
+      for v in $SERVICE_VARS; do
         eval "val=\${$v:-}"
         [ -n "$val" ] && envs="${envs}Environment=\"$v=$val\"
 "
@@ -276,7 +353,8 @@ case "$cmd" in
   update)
     repo=$(cat "$PI_WEB_HOME/repo" 2>/dev/null || true)
     [ -n "$repo" ] || { echo "설치한 저장소를 모릅니다 ($PI_WEB_HOME/repo). 설치 스크립트를 다시 실행하세요." >&2; exit 1; }
-    curl -fsSL "https://github.com/$repo/releases/latest/download/install-termux.sh" | bash -s -- "$@"
+    script_url="https://github.com/$repo/releases/latest/download/install-termux.sh"
+    if command -v curl >/dev/null 2>&1; then curl -fsSL "$script_url" | sh -s -- "$@"; else wget -qO- "$script_url" | sh -s -- "$@"; fi
     ;;
   uninstall)
     for a in desktop agent mate; do

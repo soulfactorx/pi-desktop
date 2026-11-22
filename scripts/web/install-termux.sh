@@ -1,18 +1,24 @@
-#!/usr/bin/env bash
-# Pi Web 설치 스크립트 — Android Termux에 Pi와 웹 서버를 한 번에 설치하고 켠다 (설계 §5.10, §5.11).
+#!/bin/sh
+# Pi Web 설치 스크립트 — Android Termux·리눅스 서버(클라우드 VM)에 Pi와 웹 서버를 한 번에 설치하고 켠다 (설계 §5.10, §5.11).
 # 묶음에는 Pi Desktop(pi-web)과 Agent(pi-web agent)·Mate(pi-web mate) 웹 버전이 함께 들어 있다.
 #
-#   curl -fsSL https://github.com/__PI_WEB_REPO__/releases/latest/download/install-termux.sh | bash
+#   curl -fsSL https://github.com/__PI_WEB_REPO__/releases/latest/download/install-termux.sh | sh
+#   wget -qO- https://github.com/__PI_WEB_REPO__/releases/latest/download/install-termux.sh | sh   (curl이 없을 때)
 #
-# 옵션 (bash -s -- <옵션>):
+# 옵션 (sh -s -- <옵션>):
 #   --terminal        내장 터미널(Pi /login, 셸)을 쓰도록 node-pty를 빌드한다 (빌드 도구 수백 MB를 받는다)
 #   --version vX.Y.Z  그 릴리스를 설치한다 (기본: 최신)
 #   --file <경로>     내려받지 않고 가지고 있는 pi-web.tar.gz로 설치한다
 #   --no-pi           Pi(@earendil-works/pi-coding-agent)를 설치하지 않는다
 #   --no-start        설치만 하고 켜지 않는다
 #
-# 다시 실행하면 업데이트한다 (데이터·토큰·내장 터미널은 그대로 둔다). Termux가 아닌 Linux에서도 Node 22.19 이상이 있으면 된다.
-set -euo pipefail
+# 다시 실행하면 업데이트한다 (데이터·토큰·내장 터미널은 그대로 둔다).
+# 리눅스에서 Node.js 22.19 이상이 없으면 깐다: 패키지 관리자(apk·apt·dnf·pacman·zypper, root 또는 sudo·doas)로,
+# 그래도 맞는 버전이 없으면 nodejs.org의 공식 바이너리를 $PI_WEB_HOME/node에 받는다 (glibc).
+# POSIX sh로 쓴다 (bash가 없는 Alpine 등에서도 돈다).
+set -eu
+# shellcheck disable=SC3040
+(set -o pipefail) 2>/dev/null && set -o pipefail
 
 REPO="${PI_WEB_REPO:-__PI_WEB_REPO__}"
 PI_WEB_HOME="${PI_WEB_HOME:-$HOME/.pi-web}"
@@ -47,6 +53,83 @@ node_ok() {
     node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 19) ? 0 : 1)'
 }
 
+# 내려받기: curl이 없으면 wget (Alpine은 busybox wget이 있다)
+fetch() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fL --retry 3 -o "$2" "$1"
+  else
+    wget -q -O "$2" "$1"
+  fi
+}
+
+# root가 아니면 sudo나 doas로 패키지를 깐다
+SUDO=""
+if [ "$(id -u)" != 0 ]; then
+  if command -v sudo >/dev/null 2>&1; then
+    SUDO=sudo
+  elif command -v doas >/dev/null 2>&1; then
+    SUDO=doas
+  fi
+fi
+can_install() { [ "$(id -u)" = 0 ] || [ -n "$SUDO" ]; }
+
+# 패키지 관리자로 Node.js·npm과 받기 도구를 깐다. 저장소의 Node가 오래되었으면 아래 공식 바이너리로 넘어간다
+install_node_packages() {
+  if command -v apk >/dev/null 2>&1; then
+    step "Alpine 패키지 설치 (Node.js, npm, curl, tar)"
+    $SUDO apk add --no-cache nodejs npm curl tar ca-certificates
+    if ! node_ok; then
+      # 저장소의 nodejs가 22.19보다 오래되었으면 최신판(nodejs-current)으로 바꾼다 (둘은 함께 설치할 수 없다)
+      $SUDO apk del nodejs >/dev/null 2>&1 || true
+      $SUDO apk add --no-cache nodejs-current npm
+    fi
+  elif command -v apt-get >/dev/null 2>&1; then
+    step "apt 패키지 설치 (Node.js, npm, curl, tar)"
+    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update -q
+    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -q curl ca-certificates tar xz-utils
+    node_ok || $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -q nodejs npm || true
+  elif command -v dnf >/dev/null 2>&1; then
+    step "dnf 패키지 설치 (Node.js, npm, curl, tar)"
+    $SUDO dnf install -y curl tar xz
+    node_ok || $SUDO dnf install -y nodejs npm || true
+  elif command -v pacman >/dev/null 2>&1; then
+    step "pacman 패키지 설치 (Node.js, npm, curl, tar)"
+    $SUDO pacman -Sy --noconfirm --needed curl tar xz nodejs npm
+  elif command -v zypper >/dev/null 2>&1; then
+    step "zypper 패키지 설치 (Node.js, npm, curl, tar)"
+    $SUDO zypper -n install curl tar xz nodejs npm || true
+  else
+    warn "알 수 없는 패키지 관리자입니다. Node.js는 공식 바이너리로 받습니다."
+  fi
+}
+
+# nodejs.org의 공식 바이너리(LTS)를 $PI_WEB_HOME/node에 받는다. root 권한이 필요 없다. glibc 리눅스만
+install_node_binary() {
+  case "$(uname -m)" in
+    x86_64 | amd64) arch=x64 ;;
+    aarch64 | arm64) arch=arm64 ;;
+    armv7l) arch=armv7l ;;
+    *) fail "이 CPU($(uname -m))용 Node.js 바이너리가 없습니다. Node.js 22.19 이상을 직접 설치하세요." ;;
+  esac
+  if [ -f /etc/alpine-release ] || (ldd --version 2>&1 | grep -qi musl); then
+    fail "musl 리눅스에서는 패키지 관리자로 Node.js 22.19 이상을 설치하세요 (Alpine: apk add nodejs-current npm)."
+  fi
+  base="https://nodejs.org/dist/latest-v24.x"
+  step "Node.js 공식 바이너리 받기 ($base, linux-$arch)"
+  tmp=$(mktemp -d)
+  fetch "$base/SHASUMS256.txt" "$tmp/SHASUMS256.txt"
+  file=$(grep " node-v[0-9.]*-linux-$arch.tar.gz\$" "$tmp/SHASUMS256.txt" | awk '{print $2}' | head -n 1)
+  [ -n "$file" ] || fail "Node.js 바이너리 목록에서 linux-$arch를 찾지 못했습니다"
+  fetch "$base/$file" "$tmp/$file"
+  (cd "$tmp" && grep " $file\$" SHASUMS256.txt | sha256sum -c -) >/dev/null || fail "Node.js 바이너리의 체크섬이 맞지 않습니다"
+  rm -rf "$PI_WEB_HOME/node"
+  mkdir -p "$PI_WEB_HOME/node"
+  tar -xzf "$tmp/$file" -C "$PI_WEB_HOME/node" --strip-components=1
+  rm -rf "$tmp"
+  PATH="$PI_WEB_HOME/node/bin:$PATH"
+  export PATH
+}
+
 # 1. Node.js와 받기 도구
 if [ "$TERMUX" = 1 ]; then
   # 먼저 설치된 패키지를 모두 올린다. 일부만 올리면 새 curl이 예전 openssl과 맞지 않아
@@ -62,8 +145,40 @@ if [ "$TERMUX" = 1 ]; then
   # shellcheck disable=SC2086
   pkg install -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef $packages
 fi
+if [ "$TERMUX" = 0 ]; then
+  # 전에 받아 둔 공식 바이너리가 있으면 쓴다
+  if [ -x "$PI_WEB_HOME/node/bin/node" ]; then PATH="$PI_WEB_HOME/node/bin:$PATH"; export PATH; fi
+  if ! node_ok || ! command -v npm >/dev/null 2>&1 || { ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; }; then
+    if can_install; then
+      install_node_packages
+    else
+      warn "root가 아니고 sudo·doas도 없어 패키지를 깔 수 없습니다. Node.js는 공식 바이너리로 받습니다."
+    fi
+  fi
+  if ! node_ok || ! command -v npm >/dev/null 2>&1; then install_node_binary; fi
+fi
 node_ok || fail "Node.js 22.19 이상이 필요합니다. Termux라면: pkg install nodejs-lts"
+command -v npm >/dev/null 2>&1 || fail "npm이 없습니다"
 echo "Node $(node --version)"
+
+# 실행 환경: 공식 바이너리를 받았거나, npm 전역 위치에 쓸 수 없어 사용자 위치를 쓰면 pi-web이 늘 같은 환경으로 돌게 적어 둔다
+mkdir -p "$PI_WEB_HOME"
+: >"$PI_WEB_HOME/env.new"
+if [ -x "$PI_WEB_HOME/node/bin/node" ] && [ "$(command -v node)" = "$PI_WEB_HOME/node/bin/node" ]; then
+  echo "PATH=\"$PI_WEB_HOME/node/bin:\$PATH\"; export PATH" >>"$PI_WEB_HOME/env.new"
+fi
+if [ "$TERMUX" = 0 ] && [ "$(id -u)" != 0 ]; then
+  npm_prefix=$(npm prefix -g 2>/dev/null || echo "")
+  if [ -z "$npm_prefix" ] || ! { mkdir -p "$npm_prefix/lib" 2>/dev/null && [ -w "$npm_prefix/lib" ]; }; then
+    # 시스템 전역 위치(/usr 등)에 쓸 수 없다: Pi를 ~/.local에 설치한다 (pi-web·Agent가 npm root -g로 찾는다)
+    NPM_CONFIG_PREFIX="$HOME/.local"
+    export NPM_CONFIG_PREFIX
+    PATH="$HOME/.local/bin:$PATH"
+    export PATH
+    echo "NPM_CONFIG_PREFIX=\"$HOME/.local\"; export NPM_CONFIG_PREFIX; PATH=\"$HOME/.local/bin:\$PATH\"; export PATH" >>"$PI_WEB_HOME/env.new"
+  fi
+fi
+if [ -s "$PI_WEB_HOME/env.new" ]; then mv "$PI_WEB_HOME/env.new" "$PI_WEB_HOME/env"; else rm -f "$PI_WEB_HOME/env.new" "$PI_WEB_HOME/env"; fi
 
 # 2. Pi
 if [ "$INSTALL_PI" = 1 ]; then
@@ -89,7 +204,7 @@ else
     url="https://github.com/$REPO/releases/download/$VERSION/pi-web.tar.gz"
   fi
   step "Pi Web 받기 ($url)"
-  curl -fL --retry 3 -o "$work/pi-web.tar.gz" "$url"
+  fetch "$url" "$work/pi-web.tar.gz"
 fi
 tar -xzf "$work/pi-web.tar.gz" -C "$work"
 [ -f "$work/pi-web/server.mjs" ] || fail "묶음 안에 server.mjs가 없습니다"
@@ -102,6 +217,10 @@ service_on=0
 if [ "$TERMUX" = 0 ] && command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet pi-web.service 2>/dev/null; then
   service_on=1
   systemctl --user stop pi-web.service || true
+elif [ "$TERMUX" = 0 ] && [ -f /etc/init.d/pi-web ] && command -v rc-service >/dev/null 2>&1 && $SUDO rc-service pi-web status >/dev/null 2>&1; then
+  # OpenRC 서비스 (Alpine)
+  service_on=2
+  $SUDO rc-service pi-web stop || true
 fi
 was_running=""
 for app in desktop agent mate; do
@@ -152,7 +271,8 @@ if [ "$TERMINAL" = 1 ]; then
 fi
 
 # 6. pi-web 명령
-if [ "$TERMUX" = 1 ]; then bin_dir="$PREFIX/bin"; else bin_dir="$HOME/.local/bin"; fi
+# root면 PATH에 늘 있는 /usr/local/bin에 둔다 (Alpine 등은 ~/.local/bin이 PATH에 없다)
+if [ "$TERMUX" = 1 ]; then bin_dir="$PREFIX/bin"; elif [ "$(id -u)" = 0 ]; then bin_dir="/usr/local/bin"; else bin_dir="$HOME/.local/bin"; fi
 mkdir -p "$bin_dir"
 cat >"$bin_dir/pi-web" <<EOF
 #!$(command -v sh)
@@ -172,15 +292,26 @@ cat <<'EOF'
   pi-web update   최신 버전으로 업데이트합니다
   pi-web service install   (리눅스 서버·클라우드 VM) 부팅하면 켜지게 systemd 서비스로 등록합니다
 
+LLM 로그인: 화면의 "프로바이더"에서 API 키를 넣습니다. OAuth 로그인(/login)은 --terminal로 설치하면 내장 터미널에서 됩니다.
+EOF
+if [ "$TERMUX" = 1 ]; then
+  cat <<'EOF'
 휴대폰이 Termux를 멈추지 않게 하려면 (갤럭시 기준):
   - 설정 → 애플리케이션 → Termux → 배터리 → "제한 없음"
   - 개발자 옵션 → "하위 프로세스 제한 사용 중지" 켜기 (Android 14 이상)
   - 알림 창의 Termux 알림에서 "Acquire wakelock" (pi-web이 자동으로 걸어 둡니다)
-LLM 로그인: 화면의 "프로바이더"에서 API 키를 넣습니다. OAuth 로그인(/login)은 --terminal로 설치하면 내장 터미널에서 됩니다.
 EOF
+else
+  cat <<'EOF'
+서버(클라우드 VM)에서 다른 기기로 열기: SSH 터널(ssh -L 8787:localhost:8787 …), 또는 PI_WEB_HOST=0.0.0.0과
+HTTPS 인증서(PI_WEB_TLS_CERT·PI_WEB_TLS_KEY) — 자세히는 저장소 README의 "리눅스 서버·클라우드 VM에서 쓰기"
+EOF
+fi
 
 if [ "$service_on" = 1 ]; then
   systemctl --user start pi-web.service && echo "서비스(pi-web.service)로 다시 켰습니다." || warn "서비스를 다시 켜지 못했습니다 (systemctl --user status pi-web.service)"
+elif [ "$service_on" = 2 ]; then
+  $SUDO rc-service pi-web start && echo "서비스(OpenRC pi-web)로 다시 켰습니다." || warn "서비스를 다시 켜지 못했습니다 (rc-service pi-web status)"
 elif [ -n "$was_running" ]; then
   # 업데이트: 켜져 있던 것만 다시 켠다. Pi Web이 켜져 있었으면 Agent·Mate 작업 공간과 한 프로세스로 켠다 (브라우저도 그것만 연다)
   case " $was_running " in

@@ -70,7 +70,7 @@ Pi를 업데이트하면 앱도 그대로 따라갑니다. 휴대폰 브라우�
 Electron 앱은 Android에서 돌지 않으므로, 휴대폰의 [Termux](https://termux.dev)에서 Pi와 웹 서버를 돌리고 휴대폰 브라우저(Chrome·삼성 인터넷)로 같은 화면을 엽니다. VS Code의 code-server와 같은 방식입니다.
 
 ```bash
-curl -fsSL https://github.com/soulfactorx/pi-desktop/releases/latest/download/install-termux.sh | bash
+curl -fsSL https://github.com/soulfactorx/pi-desktop/releases/latest/download/install-termux.sh | sh
 ```
 
 | 명령 | 하는 일 |
@@ -86,10 +86,11 @@ curl -fsSL https://github.com/soulfactorx/pi-desktop/releases/latest/download/in
 
 ## 리눅스 서버·클라우드 VM에서 쓰기 (pi-web 서버 모드)
 
-같은 설치 스크립트가 Termux가 아닌 리눅스에서도 됩니다 (Node.js 22.19 이상 필요). VM에서 Pi와 웹 서버를 돌리고 PC·휴대폰 브라우저로 엽니다.
+같은 설치 스크립트가 Termux가 아닌 리눅스에서도 됩니다. VM에서 Pi와 웹 서버를 돌리고 PC·휴대폰 브라우저로 엽니다.
+Node.js 22.19 이상·npm이 없으면 스크립트가 깝니다: 패키지 관리자(apk·apt·dnf·pacman·zypper, root·sudo·doas)로, 맞는 버전이 없으면 nodejs.org 공식 바이너리를 `~/.pi-web/node`에 받습니다. bash가 없어도 됩니다 (Alpine은 curl이 없으면 `wget -qO- <주소> | sh`).
 
 ```bash
-curl -fsSL https://github.com/soulfactorx/pi-desktop/releases/latest/download/install-termux.sh | bash -s -- --no-start
+curl -fsSL https://github.com/soulfactorx/pi-desktop/releases/latest/download/install-termux.sh | sh -s -- --no-start
 ```
 
 이 서버는 VM에서 명령 실행·파일 쓰기를 할 수 있습니다. 토큰은 늘 필요하고, 인터넷에 열 때는 아래 셋 중 하나로 엽니다.
@@ -104,7 +105,7 @@ curl -fsSL https://github.com/soulfactorx/pi-desktop/releases/latest/download/in
 
 | 명령 | 하는 일 |
 |---|---|
-| `pi-web service install` | 부팅하면 켜지게 systemd 사용자 서비스로 등록하고 켭니다. 지금 셸의 `PI_WEB_*` 설정을 서비스에 적어 둡니다 (바꾸면 다시 install). 로그인하지 않아도 돌게 `loginctl enable-linger`를 걸고, 권한이 없으면 `sudo` 명령을 알려 줍니다 |
+| `pi-web service install` | 부팅하면 켜지게 서비스로 등록하고 켭니다 (systemd 사용자 서비스, Alpine 등은 OpenRC `/etc/init.d/pi-web`). 지금 셸의 `PI_WEB_*` 설정을 서비스에 적어 둡니다 (바꾸면 다시 install). 로그인하지 않아도 돌게 `loginctl enable-linger`를 걸고, 권한이 없으면 `sudo` 명령을 알려 줍니다 |
 | `pi-web service status` · `uninstall` | 서비스 상태 · 등록 해제 |
 | `pi-web url` | 접속 주소. 모든 주소(`0.0.0.0`)에서 들으면 "다른 기기에서" 열 주소(VM의 IP, 공개 이름)도 보입니다 |
 
