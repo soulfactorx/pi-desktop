@@ -19,7 +19,7 @@ function loadPty(): Promise<typeof Pty> {
     ptyModule = undefined;
     throw new Error(
       `내장 터미널에 필요한 node-pty를 불러오지 못했습니다 (${error instanceof Error ? error.message : String(error)}).\n` +
-        "Termux라면 설치 스크립트를 --terminal로 다시 실행하세요.",
+        "휴대폰·서버의 웹 버전이면 pi-web update --terminal로 한 번 준비하세요 (빌드 도구를 받아 node-pty를 빌드합니다).",
     );
   });
   return ptyModule;

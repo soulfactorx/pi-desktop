@@ -262,6 +262,23 @@ if [ "$TERMINAL" = 1 ]; then
     # Termux의 node-gyp는 android_ndk_path 변수가 없다고 실패한다. 빈 값을 정해 둔다.
     mkdir -p "$HOME/.gyp"
     [ -f "$HOME/.gyp/include.gypi" ] || echo "{'variables':{'android_ndk_path':''}}" >"$HOME/.gyp/include.gypi"
+  elif ! command -v make >/dev/null 2>&1 || ! command -v g++ >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then
+    # 리눅스: node-pty는 리눅스용 미리 빌드된 파일이 없어 C++ 컴파일러·make·python3가 필요하다
+    if can_install; then
+      if command -v apk >/dev/null 2>&1; then
+        $SUDO apk add --no-cache python3 make g++ linux-headers
+      elif command -v apt-get >/dev/null 2>&1; then
+        $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3 make g++
+      elif command -v dnf >/dev/null 2>&1; then
+        $SUDO dnf install -y python3 make gcc-c++
+      elif command -v pacman >/dev/null 2>&1; then
+        $SUDO pacman -Sy --noconfirm --needed python make gcc
+      elif command -v zypper >/dev/null 2>&1; then
+        $SUDO zypper -n install python3 make gcc-c++ || true
+      fi
+    else
+      warn "빌드 도구(python3·make·g++)가 없고 설치할 권한(root·sudo·doas)도 없습니다. 직접 설치한 뒤 다시 실행하세요."
+    fi
   fi
   if (cd "$PI_WEB_HOME/app" && npm install --no-save --no-package-lock --no-audit --no-fund node-pty@1.1.0); then
     echo "내장 터미널을 쓸 수 있습니다."
@@ -325,7 +342,7 @@ cat <<'EOF'
   pi-web update   최신 버전으로 업데이트합니다
   pi-web service install   (리눅스 서버·클라우드 VM) 부팅하면 켜지게 systemd 서비스로 등록합니다
 
-LLM 로그인: 화면의 "프로바이더"에서 API 키를 넣습니다. OAuth 로그인(/login)은 --terminal로 설치하면 내장 터미널에서 됩니다.
+LLM 로그인: 화면의 "프로바이더"에서 API 키를 넣습니다. 내장 터미널(셸, OAuth 로그인 /login)은 pi-web update --terminal로 한 번 준비합니다.
 EOF
 if [ "$TERMUX" = 1 ]; then
   cat <<'EOF'
