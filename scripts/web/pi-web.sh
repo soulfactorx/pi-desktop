@@ -13,7 +13,9 @@
 #       service install|uninstall|status (리눅스 서버·클라우드 VM: 부팅하면 systemd가 켠다)
 #       update | uninstall | version (앱과 상관없이 묶음 전체)
 #
-# 환경 변수: PI_WEB_PORT(앱마다 기본값), PI_WEB_HOST(기본 127.0.0.1, 다른 기기에서 열려면 0.0.0.0), PI_WEB_HOME(기본 ~/.pi-web), PI_WEB_NO_OPEN=1
+# 옵션: --host 주소(기본 127.0.0.1, 다른 기기·VM 포트 포워딩으로 열려면 0.0.0.0) --port 번호. 예: pi-web --host 0.0.0.0
+# 환경 변수: PI_WEB_PORT(앱마다 기본값), PI_WEB_HOST(--host와 같다. 같은 줄에 쓰거나 export한다: PI_WEB_HOST=0.0.0.0 pi-web start),
+#           PI_WEB_HOME(기본 ~/.pi-web), PI_WEB_NO_OPEN=1
 #           PI_WEB_TLS_CERT·PI_WEB_TLS_KEY(HTTPS 인증서·키), PI_WEB_PUBLIC_HOST(접속 주소에 쓸 도메인·공인 IP)
 set -eu
 
@@ -55,6 +57,31 @@ use_app() {
 
 running() {
   [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+}
+
+# pid 파일에 없는 이 앱의 서버 (끄는 중이던 것, pid 파일이 지워진 것). 포트를 잡고 있어 새로 켜지 못하게 한다
+strays() {
+  command -v pgrep >/dev/null 2>&1 || return 0
+  pgrep -f "node $APP_DIR/server.mjs" 2>/dev/null | while read -r p; do
+    if [ "$p" != "$$" ] && { [ ! -f "$PID_FILE" ] || [ "$p" != "$(cat "$PID_FILE")" ]; }; then echo "$p"; fi
+  done
+}
+
+# 끝날 때까지 기다리고(10초), 그래도 남으면 강제로 끈다
+kill_wait() {
+  kill "$@" 2>/dev/null || true
+  i=0
+  for p in "$@"; do
+    while kill -0 "$p" 2>/dev/null; do
+      i=$((i + 1))
+      if [ "$i" -gt 50 ]; then
+        kill -9 "$p" 2>/dev/null || true
+        sleep 0.2
+        break
+      fi
+      sleep 0.2
+    done
+  done
 }
 
 any_running() {
@@ -264,9 +291,18 @@ start() {
     open_url
     return 0
   fi
+  left=$(strays)
+  if [ -n "$left" ]; then
+    echo "$NAME: 전에 띄운 서버가 아직 남아 있어 끕니다 (pid $(echo $left))."
+    # shellcheck disable=SC2086
+    kill_wait $left
+  fi
   mkdir -p "$DATA_DIR"
   rm -f "$URL_FILE"
   wake_lock
+  # 이번에 켜며 남긴 기록만 보이게 지금 줄 수를 적어 둔다
+  log_from=1
+  if [ -f "$LOG" ]; then log_from=$(($(wc -l <"$LOG") + 1)); fi
   PI_WEB_DATA="$DATA_DIR" nohup node "$APP_DIR/server.mjs" --port "$PORT" ${PI_WEB_HOST:+--host "$PI_WEB_HOST"} $EXTRA_ARGS "$@" >>"$LOG" 2>&1 &
   echo $! >"$PID_FILE"
   # 서버가 주소 파일을 쓰면 뜬 것이다
@@ -275,7 +311,7 @@ start() {
     i=$((i + 1))
     if [ "$i" -gt 150 ] || ! running; then
       echo "$NAME을(를) 켜지 못했습니다. 기록($LOG)의 끝:" >&2
-      tail -n 20 "$LOG" >&2 || true
+      tail -n +"$log_from" "$LOG" | tail -n 20 >&2 || true
       rm -f "$PID_FILE"
       exit 1
     fi
@@ -287,12 +323,18 @@ start() {
 }
 
 stop() {
+  left=$(strays)
   if running; then
-    kill "$(cat "$PID_FILE")" 2>/dev/null || true
+    # shellcheck disable=SC2086
+    kill_wait "$(cat "$PID_FILE")" $left
     case "$APP" in
       mate) echo "$NAME을(를) 껐습니다. Mate 실행기는 계속 돌며 임무 시간표를 지킵니다." ;;
       *) echo "$NAME을(를) 껐습니다. 실행 중이던 Pi 세션은 데몬에서 계속 돕니다." ;;
     esac
+  elif [ -n "$left" ]; then
+    # shellcheck disable=SC2086
+    kill_wait $left
+    echo "$NAME: 남아 있던 서버를 껐습니다 (pid $(echo $left))."
   else
     echo "$NAME: 실행 중이 아닙니다."
   fi
@@ -308,6 +350,24 @@ status() {
     echo "$NAME: 꺼져 있습니다."
   fi
 }
+
+# --host·--port는 어디에 와도 받는다 (나머지 인자는 그대로)
+quote() { printf "'%s'" "$(printf %s "$1" | sed "s/'/'\\\\''/g")"; }
+rest=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --host | --port)
+      [ $# -ge 2 ] || { echo "$1 뒤에 값이 필요합니다 (pi-web help)" >&2; exit 1; }
+      if [ "$1" = --host ]; then PI_WEB_HOST=$2; else PI_WEB_PORT=$2; fi
+      shift 2
+      ;;
+    --host=*) PI_WEB_HOST=${1#--host=}; shift ;;
+    --port=*) PI_WEB_PORT=${1#--port=}; shift ;;
+    *) rest="$rest $(quote "$1")"; shift ;;
+  esac
+done
+eval "set -- $rest"
+export PI_WEB_HOST PI_WEB_PORT 2>/dev/null || true
 
 # 앱 이름이 먼저 오면 그 앱. 없으면 켜고 끄는 명령은 세 앱 모두(한 화면의 작업 공간이므로), 그 밖은 Pi Desktop
 target=
@@ -376,7 +436,7 @@ case "$cmd" in
     echo "지웠습니다. 토큰·SSH 호스트 등 데이터($PI_WEB_HOME/data, agent, mate)는 남겨 두었습니다. 함께 지우려면: rm -rf $PI_WEB_HOME"
     ;;
   version | --version | -v) node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).version)' "$ROOT/package.json" ;;
-  help | --help | -h) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' ;;
+  help | --help | -h) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//' ;;
   *)
     echo "모르는 명령입니다: $cmd (pi-web help)" >&2
     exit 1
