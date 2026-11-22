@@ -10,7 +10,7 @@ import { webDefault } from "../tunables-defs";
 
 export { hub };
 export { bearerToken, isLoopbackAddress, loadOrCreateToken, requestAllowed, tokenMatches } from "./auth";
-export { listenWebServer, type HttpServerOptions, type RunningServer } from "./http-server";
+export { accessUrls, listenWebServer, publicOptionsFromEnv, type HttpServerOptions, type PublicOptions, type RunningServer } from "./http-server";
 
 export interface WebServerOptions {
   /** 화면에 보일 이름 (hello) */

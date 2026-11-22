@@ -84,6 +84,36 @@ curl -fsSL https://github.com/soulfactorx/pi-desktop/releases/latest/download/in
 웹 묶음(`pi-web.tar.gz`)과 설치 스크립트는 Pi Desktop 릴리스(Latest)에 함께 올라갑니다. 갤럭시 설정·내장 터미널 같은 자세한 내용은 [apps/desktop 설명서의 "Android 휴대폰에서 쓰기"](apps/desktop/README.md#android-휴대폰에서-쓰기-웹-버전-pi-web)에 있습니다.
 예전 포크(`soulfactorx/pi-desktop-mobile`)에서 설치했다면 위 설치 명령을 한 번 다시 실행해 이 저장소로 옮깁니다.
 
+## 리눅스 서버·클라우드 VM에서 쓰기 (pi-web 서버 모드)
+
+같은 설치 스크립트가 Termux가 아닌 리눅스에서도 됩니다 (Node.js 22.19 이상 필요). VM에서 Pi와 웹 서버를 돌리고 PC·휴대폰 브라우저로 엽니다.
+
+```bash
+curl -fsSL https://github.com/soulfactorx/pi-desktop/releases/latest/download/install-termux.sh | bash -s -- --no-start
+```
+
+이 서버는 VM에서 명령 실행·파일 쓰기를 할 수 있습니다. 토큰은 늘 필요하고, 인터넷에 열 때는 아래 셋 중 하나로 엽니다.
+
+| 방법 | 설정 | 브라우저 주소 |
+|---|---|---|
+| SSH 터널 (가장 간단) | 그대로 (`127.0.0.1`에서만 듣는다) | `ssh -L 8787:localhost:8787 -L 8788:localhost:8788 -L 8789:localhost:8789 VM` 뒤 `http://localhost:8787/#token=…` |
+| 사설망 (Tailscale 등) | `PI_WEB_HOST=0.0.0.0` | `http://VM의-사설망-주소:8787/#token=…` |
+| HTTPS로 바로 열기 | `PI_WEB_HOST=0.0.0.0`, `PI_WEB_TLS_CERT`·`PI_WEB_TLS_KEY`(PEM 인증서·키), `PI_WEB_PUBLIC_HOST`(인증서의 도메인) | `https://도메인:8787/#token=…` (방화벽에서 8787~8789를 연다) |
+
+알림·홈 화면 앱 설치·클립보드 같은 브라우저 기능은 HTTPS나 localhost(SSH 터널)에서만 됩니다. 인증서는 Let's Encrypt(certbot)나 `tailscale cert`로 받습니다. 서버가 인증서 파일을 읽을 수 있어야 합니다.
+
+| 명령 | 하는 일 |
+|---|---|
+| `pi-web service install` | 부팅하면 켜지게 systemd 사용자 서비스로 등록하고 켭니다. 지금 셸의 `PI_WEB_*` 설정을 서비스에 적어 둡니다 (바꾸면 다시 install). 로그인하지 않아도 돌게 `loginctl enable-linger`를 걸고, 권한이 없으면 `sudo` 명령을 알려 줍니다 |
+| `pi-web service status` · `uninstall` | 서비스 상태 · 등록 해제 |
+| `pi-web url` | 접속 주소. 모든 주소(`0.0.0.0`)에서 들으면 "다른 기기에서" 열 주소(VM의 IP, 공개 이름)도 보입니다 |
+
+예: 도메인 인증서로 HTTPS 서버를 서비스로 등록
+
+```bash
+PI_WEB_HOST=0.0.0.0 PI_WEB_PUBLIC_HOST=pi.example.com PI_WEB_TLS_CERT=$HOME/certs/fullchain.pem PI_WEB_TLS_KEY=$HOME/certs/privkey.pem pi-web service install
+```
+
 ## 저장소 구성
 
 ```

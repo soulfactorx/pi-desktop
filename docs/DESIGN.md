@@ -1255,6 +1255,11 @@ Pi는 세션 파일 잠금을 문서화하지 않았다. 그래서 **같은 세�
   - 화면 복사·붙여넣기 외의 파일 올리기, PWA 오프라인(서비스 워커)
   - HTTPS (같은 기기 localhost는 브라우저가 안전한 출처로 본다. 다른 기기에서 쓰려면 Tailscale 등 VPN 뒤에 두기를 권한다)
 
+- **리눅스 서버·클라우드 VM (서버 모드)**: 설치 스크립트는 Termux가 아니어도 된다(Node 22.19+). 다른 기기에서 여는 설정은 환경 변수로, 세 앱 서버가 함께 쓴다 (`web-shell/server/http-server.ts`).
+  - `PI_WEB_TLS_CERT`·`PI_WEB_TLS_KEY`: 있으면 HTTPS 서버로 듣는다(같은 포트, wss). 알림·서비스 워커·클립보드는 보안 컨텍스트(HTTPS·localhost)에서만 되므로, 역방향 프록시 없이 인증서를 바로 붙이는 길을 둔다. 프록시를 쓰면 Host가 바뀌어 127.0.0.1에서만 들을 때의 Host 확인(DNS rebinding 막기)에 걸리고, Agent·Mate 화면 틀이 포트별 주소(8788·8789)를 쓰므로 프록시 설정이 복잡해진다.
+  - `PI_WEB_PUBLIC_HOST`: 접속 주소의 이름(인증서 도메인). 있으면 `url` 파일이 이 이름을 쓴다(Agent·Mate 화면 틀도 이 주소). 모든 주소(`0.0.0.0`)에서 들으면 이 기기의 바깥 IPv4 주소들을 `urls` 파일에 적고 `pi-web url`이 "다른 기기에서"로 보인다. 화면은 Agent·Mate 틀 주소의 호스트를 지금 연 주소로 바꾸고(프로토콜·포트는 서버 것), HTTPS면 틀도 HTTPS다.
+  - `pi-web service install|uninstall|status`: systemd 사용자 서비스(`~/.config/systemd/user/pi-web.service`, `pi-web run`, `Restart=on-failure`). 설치할 때 셸의 `PI_WEB_*`·`PATH`를 서비스에 적는다. 부팅만 해도 돌게 `loginctl enable-linger`. `pi-web run`도 pid 파일을 남겨 `status`·`stop`이 알아본다. 설치 스크립트(업데이트)는 서비스가 돌고 있으면 서비스로 멈추고 다시 켠다(직접 끄면 systemd가 다시 띄워 포트가 겹친다).
+
 ### 5.11 Agent·Mate 웹 버전 — web-shell로 Electron 앱 감싸기 (v0.71)
 
 **목표**: 원래 저장소에서 더해진 Pi Desktop Agent(apps/agent)와 Pi Desktop Mate(apps/mate)도 휴대폰 브라우저로 쓴다. 두 앱은 원래 저장소가 계속 고치므로, **앱의 main·preload·renderer는 한 줄도 고치지 않고** 감싼다. 그래야 원래 저장소를 합칠 때 충돌이 없다(Pi Desktop처럼 처리기를 옮기는 방식(§5.10)은 합칠 때마다 충돌이 난다). 웹 진입점은 각 앱 안에 따로 둔다: `src/server/index.ts`(웹 서버), `src/web/`(화면 시작점·web.css·manifest), `vite.web.config.ts`, `scripts/build-web.mjs`(§5.10 "빌드와 묶음").
