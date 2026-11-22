@@ -296,9 +296,25 @@ case ":$PATH:" in
     ;;
 esac
 
+# fish는 ~/.profile을 읽지 않고, 로그인 셸이면 /etc/profile의 PATH(/usr/local/bin 등)도 받지 않는다.
+# fish가 있으면 지금 PATH와 상관없이 conf.d에 pi-web·Node·Pi 위치를 더한다 (있으면 덮어쓴다)
+if [ "$TERMUX" = 0 ] && { command -v fish >/dev/null 2>&1 || [ -d "$HOME/.config/fish" ]; }; then
+  fish_dirs="$bin_dir"
+  [ -d "$PI_WEB_HOME/node/bin" ] && fish_dirs="$PI_WEB_HOME/node/bin $fish_dirs"
+  if [ -f "$PI_WEB_HOME/env" ] && grep -q NPM_CONFIG_PREFIX "$PI_WEB_HOME/env"; then fish_dirs="$HOME/.local/bin $fish_dirs"; fi
+  mkdir -p "$HOME/.config/fish/conf.d"
+  {
+    echo "# pi-web: install-termux.sh가 만듦 (fish는 ~/.profile을 읽지 않는다)"
+    for d in $fish_dirs; do
+      echo "test -d '$d'; and not contains -- '$d' \$PATH; and set -gx PATH '$d' \$PATH"
+    done
+  } >"$HOME/.config/fish/conf.d/pi-web.fish"
+  path_added="$path_added $HOME/.config/fish/conf.d/pi-web.fish"
+fi
+
 step "완료: Pi Web $(sh "$PI_WEB_HOME/app/bin/pi-web" version)"
 if [ -n "$path_added" ]; then
-  echo "PATH에 $bin_dir를 더했습니다 (${path_added# }). 새 터미널부터 pi-web을 쓸 수 있고, 지금 터미널에서는: . ~/.profile"
+  echo "PATH에 $bin_dir를 더했습니다 (${path_added# }). 새 터미널부터 pi-web을 쓸 수 있고, 지금 터미널에서는: . ~/.profile (fish: source ~/.config/fish/conf.d/pi-web.fish)"
 fi
 cat <<'EOF'
   pi-web          Pi Desktop을 켜고 브라우저를 엽니다 (주소는 pi-web url)
