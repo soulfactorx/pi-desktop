@@ -80,6 +80,10 @@ export interface ObserveView {
   activity: ActivityRecord[];
   /** 관찰자가 살펴보길 기다리는 후보 수 */
   queue: number;
+  /** 실행이 실패한 관찰 (API 키 만료 등). "다시 살펴보기"로 다시 한다. attempts: 잇달아 실패한 횟수 (자동은 3번까지) */
+  failed: Array<{ title: string; cwd: string; topic: string; attempts: number; at: number; status: string }>;
+  /** 실패 뒤 자동으로 다시 하는 시각 */
+  retryAt?: number;
   today: { date: string; count: number };
   projects: ProjectSnapshot[];
   /** 주제별 사용자 반응 (보여 줌·받아들임·버림) */

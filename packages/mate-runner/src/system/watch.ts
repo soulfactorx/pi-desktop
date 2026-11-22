@@ -160,6 +160,8 @@ export class SystemWatch {
     const st = state.system;
     if (!st || !sys.analyze || this.platform === "unsupported") return undefined;
     if (st.analyzedAt && now - st.analyzedAt < mateTunables().num("system.analysisHours") * 3_600_000) return undefined;
+    // 방금 분석이 실패했으면 (API 키 만료 등) 잠시 쉰다
+    if (st.analysisRetryAt && now < st.analysisRetryAt) return undefined;
     if (st.today.count >= config.observe.dailySuggestionLimit) return undefined;
     // 켠 지 하루는 모은 뒤에 본다 (켜자마자 빈 요약을 보내지 않게)
     if (now - st.since < Math.min(DAY, mateTunables().num("system.analysisHours") * 3_600_000)) return undefined;
@@ -168,6 +170,37 @@ export class SystemWatch {
     st.analyzedAt = now;
     st.today.count += 1;
     return systemDuty(this.paths, digest.text, now);
+  }
+
+  /**
+   * 요약 분석 실행이 끝난 뒤. 실패하면 (API 키 만료 등) 하루를 기다리지 않고 30분·1시간 반 뒤 다시 하고,
+   * 세 번 실패하면 "다시 살펴보기"를 기다린다. 오늘 분석 수에서도 뺀다
+   */
+  afterRun(state: RunnerState, ok: boolean, now: number): void {
+    const st = state.system;
+    if (!st) return;
+    if (ok) {
+      delete st.analysisFailures;
+      delete st.analysisRetryAt;
+      return;
+    }
+    const failures = (st.analysisFailures ?? 0) + 1;
+    st.analysisFailures = failures;
+    st.today.count = Math.max(0, st.today.count - 1);
+    if (failures < 3) {
+      delete st.analyzedAt;
+      st.analysisRetryAt = now + 30 * 60_000 * 3 ** (failures - 1);
+    } else delete st.analysisRetryAt; // analyzedAt을 남겨 둔다: 다음 정기 분석이나 "다시 살펴보기"까지 쉰다
+  }
+
+  /** "다시 살펴보기": 실패한 요약 분석을 바로 다시 할 수 있게 한다. 다시 할 것이 있었으면 true */
+  retryAnalysis(state: RunnerState): boolean {
+    const st = state.system;
+    if (!st?.analysisFailures) return false;
+    st.analysisFailures = 0;
+    delete st.analysisRetryAt;
+    delete st.analyzedAt;
+    return true;
   }
 
   /** 모델에게 보낼 요약 (화면에서 미리 보는 것과 같다) */
@@ -241,6 +274,8 @@ export class SystemWatch {
       problems: st?.problems ?? {},
       today: st?.today ?? { date: "", count: 0 },
       ...(st?.analyzedAt ? { analyzedAt: st.analyzedAt } : {}),
+      ...(st?.analysisFailures ? { analysisFailures: st.analysisFailures } : {}),
+      ...(st?.analysisRetryAt ? { analysisRetryAt: st.analysisRetryAt } : {}),
       ...(st ? { since: st.since } : {}),
     };
   }

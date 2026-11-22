@@ -10,8 +10,8 @@ import { delegateInboxItem } from "./delegate";
 import type { PiLaunch } from "./executor";
 import { applyInboxChange, discardInboxChange } from "./inbox-change";
 import { applyInstall, describeInstall } from "./install";
-import { OBSERVER_DUTY_ID, OBSERVER_NAME, readActivity, topicFeedback } from "./observer";
-import { emptySystemState, SystemWatch } from "./system/watch";
+import { OBSERVER_DUTY_ID, OBSERVER_NAME, Observer, readActivity, topicFeedback } from "./observer";
+import { emptySystemState, SYSTEM_TOPICS, SystemWatch } from "./system/watch";
 import { liveView } from "./live";
 import { execCommand } from "./watchers";
 import type { MatePaths } from "./paths";
@@ -67,6 +67,8 @@ export interface MateAppContext {
   setTelegramToken?: (token: string | undefined) => void;
   /** 시스템 관찰이 모은 기록을 지운다 (실행기 메모리의 상태까지). 없으면 상태 파일만 고친다 */
   clearSystem?: () => Promise<void>;
+  /** 실패한 관찰자 실행·시스템 요약 분석을 다시 한다 (실행기 메모리의 상태까지). 다시 할 일 수 */
+  retryObservations?: () => Promise<number>;
 }
 
 // 메서드마다 인자 모양이 달라 any로 받는다 (실행기는 이름으로만 찾는다)
@@ -136,6 +138,11 @@ export function mateAppApi(ctx: MateAppContext): MateAppApi {
         queue: state.observer?.queue.length ?? 0,
         today: state.observer?.today ?? { date: "", count: 0 },
         projects: Object.values(state.observer?.projects ?? {}),
+        failed: [
+          ...(state.observer?.failed ?? []).map((f) => ({ title: f.job.title, cwd: f.job.cwd, topic: f.job.topic, attempts: f.attempts, at: f.at, status: f.status })),
+          ...(state.system?.analysisFailures ? [{ title: "시스템 관찰 요약", cwd: "", topic: SYSTEM_TOPICS.digest, attempts: state.system.analysisFailures, at: state.system.analyzedAt ?? 0, status: "failed" }] : []),
+        ],
+        ...(state.observer?.retryAt && state.observer.retryAt > now ? { retryAt: state.observer.retryAt } : {}),
         feedback,
         ...(state.observer ? { since: state.observer.since } : {}),
         live: liveView(state, config, now),
@@ -159,6 +166,15 @@ export function mateAppApi(ctx: MateAppContext): MateAppApi {
       const state = await loadState(paths);
       if (state.system) state.system = { ...emptySystemState(Date.now()), history: state.system.history, ...(state.system.healthCursor ? { healthCursor: state.system.healthCursor } : {}) };
       await saveState(paths, state);
+    },
+    /** "다시 살펴보기": API 키 만료 등으로 실패한 관찰을 다시 한다. 다시 할 일 수 */
+    observeRetry: async () => {
+      if (ctx.retryObservations) return ctx.retryObservations();
+      const state = await loadState(paths);
+      const count = new Observer(paths, execCommand).retryFailed(state) + (system.retryAnalysis(state) ? 1 : 0);
+      await saveState(paths, state);
+      ctx.wake();
+      return count;
     },
     saveConfig: (patch: ConfigPatch) => saveConfig(paths, patch),
     // 설정으로 꺼낸 프롬프트와 수치 (DESIGN-APPS.md §7). 실행기는 파일이 바뀌면 다음 사용부터 새 값을 읽는다

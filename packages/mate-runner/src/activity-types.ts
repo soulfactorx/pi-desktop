@@ -162,6 +162,21 @@ export interface ObserverState {
   since: number;
   /** 저장소 상태를 마지막으로 읽은 시각 */
   projectsAt?: number;
+  /**
+   * 관찰자 실행이 실패한 후보 (API 키 만료·로그인 끊김 등). 잠시 뒤 다시 하고,
+   * 세 번 실패하면 사용자가 "다시 살펴보기"를 누를 때까지 기다린다
+   */
+  failed?: ObserverFailure[];
+  /** 실패 뒤 이 시각까지 관찰자 실행을 쉰다 (같은 이유로 곧바로 또 실패하지 않게) */
+  retryAt?: number;
+}
+
+export interface ObserverFailure {
+  job: Candidate;
+  attempts: number;
+  at: number;
+  /** 실행 결과 (failed·timeout·budget) */
+  status: string;
 }
 
 export const TOPIC_LABELS: Record<InsightTopic, string> = {

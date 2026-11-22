@@ -221,6 +221,21 @@ describe("시스템 관찰: 실행기", () => {
     expect(job?.cwd).toBe(paths.home);
     expect(runTools({ duty: job!, home: paths.home } as never)).toEqual(["mate_propose", "mate_ask"]);
     expect(await watch.nextJob(state, config({ health: true, apps: true, analyze: true }), now + HOUR)).toBeUndefined(); // 하루 한 번
+
+    // 분석이 실패하면 (API 키 만료 등) 하루를 기다리지 않고 30분 뒤 다시 하고, 세 번 실패하면 "다시 살펴보기"를 기다린다
+    const cfg = config({ health: true, apps: true, analyze: true });
+    watch.afterRun(state, false, now);
+    expect(await watch.nextJob(state, cfg, now + 10 * 60_000)).toBeUndefined();
+    expect(await watch.nextJob(state, cfg, now + 31 * 60_000)).toBeDefined();
+    watch.afterRun(state, false, now + 31 * 60_000);
+    expect(await watch.nextJob(state, cfg, now + 2 * HOUR + 30 * 60_000)).toBeDefined();
+    watch.afterRun(state, false, now + 2 * HOUR + 30 * 60_000);
+    expect(await watch.nextJob(state, cfg, now + 5 * HOUR)).toBeUndefined();
+    expect(watch.retryAnalysis(state)).toBe(true);
+    expect(await watch.nextJob(state, cfg, now + 5 * HOUR)).toBeDefined();
+    watch.afterRun(state, true, now + 5 * HOUR);
+    expect(state.system!.analysisFailures).toBeUndefined();
+    expect(watch.retryAnalysis(state)).toBe(false);
   });
 
   it("설정 파일의 시스템 관찰은 모르는 값이면 꺼짐", async () => {

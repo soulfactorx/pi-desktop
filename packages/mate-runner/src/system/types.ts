@@ -104,6 +104,10 @@ export interface SystemWatchState {
   today: { date: string; count: number };
   /** 마지막 분석 실행 시각 */
   analyzedAt?: number;
+  /** 요약 분석이 잇달아 실패한 횟수 (API 키 만료 등). 성공하면 지운다 */
+  analysisFailures?: number;
+  /** 실패 뒤 이 시각까지 요약 분석을 쉰다 */
+  analysisRetryAt?: number;
   /** 읽지 못한 이유 (권한·명령 없음 등) */
   problems: Partial<Record<"health" | "history" | "apps", string>>;
 }
@@ -125,5 +129,9 @@ export interface SystemView {
   problems: SystemWatchState["problems"];
   today: { date: string; count: number };
   analyzedAt?: number;
+  /** 요약 분석이 잇달아 실패한 횟수 (API 키 만료 등). 성공하면 지운다 */
+  analysisFailures?: number;
+  /** 실패 뒤 이 시각까지 요약 분석을 쉰다 */
+  analysisRetryAt?: number;
   since?: number;
 }

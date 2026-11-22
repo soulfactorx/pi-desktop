@@ -34,6 +34,10 @@ import { mateDefault, mateTunables } from "./tunables";
  */
 export const OBSERVER_DUTY_ID = "observer";
 export const OBSERVER_NAME = "Mate 관찰자";
+/** 관찰자 실행이 실패하면 이만큼 쉬었다가 다시 한다 (두 번째 실패부터 세 배씩) */
+const RETRY_MS = 10 * 60_000;
+/** 이만큼 잇달아 실패하면 자동으로 다시 하지 않고 "다시 살펴보기"를 기다린다 (키가 만료되었으면 계속 실패하므로) */
+export const OBSERVER_MAX_ATTEMPTS = 3;
 
 // 저장소 확인 간격·기억해 둘 세션 수·활동 기록 줄 수는 설정으로 꺼냈다 (tunables.ts의 observer.*)
 
@@ -125,6 +129,8 @@ export class Observer {
     const obs = state.observer;
     if (!config.observe.enabled || !obs || obs.queue.length === 0) return undefined;
     if (obs.today.count >= config.observe.dailySuggestionLimit) return undefined;
+    // 방금 실패했으면 (API 키 만료 등) 잠시 쉰다
+    if (obs.retryAt && now < obs.retryAt) return undefined;
     const quiet = config.observe.quietMinutes * 60_000;
     // Mate 자신이 일하는 중인 것은 사용자가 바쁜 것이 아니다
     const busy = Object.values(obs.files).some(
@@ -135,6 +141,44 @@ export class Observer {
     obs.today.count += 1;
     obs.suggested[job.key] = now;
     return job;
+  }
+
+  /**
+   * 관찰자 실행이 끝난 뒤. 실패하면 (API 키 만료·로그인 끊김 등) 그 후보를 버리지 않고 실패 목록에 남겨
+   * 잠시 뒤 다시 하고, 세 번 실패하면 "다시 살펴보기"를 기다린다. 오늘 제안 수에서도 뺀다 (제안을 남기지 못했으므로)
+   */
+  afterRun(state: RunnerState, job: Candidate, status: string, now: number): void {
+    const obs = state.observer;
+    if (!obs) return;
+    const prev = obs.failed?.find((f) => f.job.key === job.key);
+    const others = (obs.failed ?? []).filter((f) => f.job.key !== job.key);
+    if (status === "done") {
+      if (others.length) obs.failed = others;
+      else {
+        delete obs.failed;
+        delete obs.retryAt;
+      }
+      return;
+    }
+    const attempts = (prev?.attempts ?? 0) + 1;
+    delete obs.suggested[job.key];
+    obs.today.count = Math.max(0, obs.today.count - 1);
+    obs.failed = [...others, { job, attempts, at: now, status }].slice(-10);
+    if (attempts < OBSERVER_MAX_ATTEMPTS) obs.queue = [job, ...obs.queue.filter((q) => q.key !== job.key)];
+    obs.retryAt = now + RETRY_MS * 3 ** (attempts - 1);
+  }
+
+  /** "다시 살펴보기": 실패한 후보를 모두 대기열 앞에 다시 넣고 바로 할 수 있게 한다 (키를 고친 뒤). 다시 넣은 수 */
+  retryFailed(state: RunnerState): number {
+    const obs = state.observer;
+    if (!obs?.failed?.length) return 0;
+    const jobs = obs.failed.map((f) => f.job);
+    const keys = new Set(jobs.map((j) => j.key));
+    obs.queue = [...jobs, ...obs.queue.filter((q) => !keys.has(q.key))];
+    // 횟수를 새로 센다: 또 실패하면 다시 세 번까지 자동으로 한다
+    obs.failed = obs.failed.map((f) => ({ ...f, attempts: 0 }));
+    delete obs.retryAt;
+    return jobs.length;
   }
 
   private async scanSessions(obs: ObserverState, config: MateConfig, now: number, scan = { files: 0, lines: 0 }): Promise<SessionAggregate[]> {

@@ -65,6 +65,7 @@ export const IpcChannels = {
   clearChat: "mate:clear-chat",
   systemDigest: "mate:system-digest",
   systemClear: "mate:system-clear",
+  observeRetry: "mate:observe-retry",
   restoreTrash: "mate:restore-trash",
   emptyTrash: "mate:empty-trash",
   runNow: "mate:run-now",
@@ -167,6 +168,8 @@ export interface MateApi {
   systemDigest(): Promise<string>;
   /** 시스템 관찰이 모은 기록을 모두 지운다 */
   systemClear(): Promise<void>;
+  /** 실패한 관찰(API 키 만료 등)을 다시 한다. 다시 할 일 수 */
+  observeRetry(): Promise<number>;
   /** 휴지통 항목을 원래 자리로 되살린다 */
   restoreTrash(id: string): Promise<void>;
   /** 휴지통을 비운다 (ids가 없으면 전부). 정말 지운 항목 수 */
