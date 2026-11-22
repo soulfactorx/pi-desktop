@@ -386,6 +386,7 @@ export function createMateMain(ctx: MateMainContext): MateMain {
     forward(IpcChannels.clearChat, "clearChat");
     forward(IpcChannels.systemDigest, "systemDigest");
     forward(IpcChannels.systemClear, "systemClear");
+    forward(IpcChannels.observeRetry, "observeRetry");
     forward(IpcChannels.restoreTrash, "restoreTrash");
     forward(IpcChannels.emptyTrash, "emptyTrash");
     forward(IpcChannels.applyInstall, "applyInstall");

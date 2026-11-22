@@ -127,6 +127,40 @@ describe("Observer", () => {
   /** 사용자 홈의 세션을 보지 않도록 Pi·Agent 세션 폴더를 모두 임시 폴더로 */
   const sessionEnv = () => ({ PI_CODING_AGENT_SESSION_DIR: join(base, "pi-sessions"), PI_DESKTOP_AGENT_HOME: join(base, "agent-home") });
 
+  it("관찰자 실행이 실패하면 (API 키 만료 등) 후보를 버리지 않고 잠시 뒤·다시 살펴보기 때 다시 한다", () => {
+    const observer = new Observer(paths, noGit, sessionEnv());
+    const now = Date.now();
+    const job = { topic: "untested-edit" as const, key: "k1", cwd: "/repo", title: "고치고 테스트 안 함", detail: "d", via: "observer" as const };
+    const state: RunnerState = {
+      duties: {},
+      today: { date: "", count: 0 },
+      observer: { files: {}, projects: {}, today: { date: "", count: 0 }, suggested: {}, queue: [job], recent: [], since: 0 },
+    };
+    // 하루 상한 1: 실패한 실행은 세지 않아야 다시 할 수 있다
+    const cfg = config({ dailySuggestionLimit: 1 });
+    expect(observer.nextJob(state, cfg, now)).toEqual(job);
+    observer.afterRun(state, job, "failed", now);
+    expect(state.observer!.today.count).toBe(0);
+    expect(state.observer!.failed).toMatchObject([{ job: { key: "k1" }, attempts: 1, status: "failed" }]);
+    // 10분은 쉰다
+    expect(observer.nextJob(state, cfg, now + 60_000)).toBeUndefined();
+    expect(observer.nextJob(state, cfg, now + 11 * 60_000)).toEqual(job);
+    observer.afterRun(state, job, "failed", now + 11 * 60_000);
+    expect(observer.nextJob(state, cfg, now + 30 * 60_000)).toBeUndefined(); // 두 번째 실패: 30분
+    expect(observer.nextJob(state, cfg, now + 42 * 60_000)).toEqual(job);
+    observer.afterRun(state, job, "failed", now + 42 * 60_000);
+    // 세 번 실패하면 자동으로는 다시 하지 않는다
+    expect(state.observer!.queue).toEqual([]);
+    expect(observer.nextJob(state, cfg, now + 10 * H)).toBeUndefined();
+    // 키를 고친 뒤 "다시 살펴보기": 바로 다시 하고, 성공하면 실패 목록에서 지운다
+    expect(observer.retryFailed(state)).toBe(1);
+    expect(observer.nextJob(state, cfg, now + 10 * H)).toEqual(job);
+    observer.afterRun(state, job, "done", now + 10 * H);
+    expect(state.observer!.failed).toBeUndefined();
+    expect(state.observer!.retryAt).toBeUndefined();
+    expect(state.observer!.today.count).toBe(1);
+  });
+
   it("세션이 조용해지면 끝난 것으로 기록하고, 규칙 후보는 인박스에, 분석 후보는 쉬는 때 관찰자에게", async () => {
     const observer = new Observer(paths, noGit, sessionEnv());
     const state: RunnerState = { duties: {}, today: { date: "", count: 0 } };

@@ -16,7 +16,7 @@ import { emptySystemState, SYSTEM_TOPICS, SystemWatch } from "./system/watch";
 import { TELEGRAM_TOKEN_ENV } from "./remote/telegram-api";
 import { TelegramRemote } from "./remote/telegram-remote";
 import { ChatAgent } from "./chat/chat-agent";
-import type { SessionAggregate } from "./activity-types";
+import type { Candidate, SessionAggregate } from "./activity-types";
 import { collectChange, prepareWorkspace, removeWorkspace, type Workspace } from "./workspace";
 import {
   findSessionFile,
@@ -62,6 +62,8 @@ interface Pick {
   cause?: string;
   /** 관찰자 실행: 제안에 붙일 주제 */
   topic?: string;
+  /** 관찰자 실행이 살펴보는 후보 (실패하면 다시 하려고 들고 다닌다) */
+  job?: Candidate;
 }
 
 /** 끝난 Pi 세션을, 그 폴더(또는 상위 폴더)의 "작업을 마치면" 임무에 기다리는 변화로 남긴다 */
@@ -429,7 +431,7 @@ export class Runner {
     if (this.running.size > 0) return undefined;
     // 할 임무가 없고 사용자가 쉬는 중이면 관찰자가 후보 하나를 살펴본다
     const job = this.observer.nextJob(this.state, config, this.now());
-    if (job) return { duty: observerDuty(job, this.now()), reason: "observe", cause: job.title, topic: job.topic };
+    if (job) return { duty: observerDuty(job, this.now()), reason: "observe", cause: job.title, topic: job.topic, job };
     // 하루 한 번 시스템 관찰 요약을 모델에게 보내 제안받는다 (켰을 때만)
     const systemJob = await this.system.nextJob(this.state, config, this.now()).catch(() => undefined);
     if (systemJob) return { duty: systemJob, reason: "observe", cause: "시스템 관찰 요약", topic: SYSTEM_TOPICS.digest };
@@ -449,7 +451,7 @@ export class Runner {
     return undefined;
   }
 
-  private async execute({ duty, reason, cause, topic }: Pick): Promise<void> {
+  private async execute({ duty, reason, cause, topic, job }: Pick): Promise<void> {
     const { paths } = this.options;
     const startedAt = this.now();
     // 실패해도 마지막 실행 시각을 남겨, 같은 임무를 곧바로 다시 돌리지 않는다
@@ -475,6 +477,9 @@ export class Runner {
         durationMs,
         ...(record.costUsd ? { costUsd: record.costUsd } : {}),
       });
+      // 실패하면 (API 키 만료 등) 그 일을 버리지 않고 잠시 뒤·"다시 살펴보기" 때 다시 한다
+      if (topic === SYSTEM_TOPICS.digest) this.system.afterRun(this.state, record.status === "done", this.now());
+      else if (job) this.observer.afterRun(this.state, job, record.status, this.now());
       if (topic === SYSTEM_TOPICS.digest) {
         const prev = this.state.live?.steps.analysis;
         liveStep(this.state, "analysis", this.now(), record.status === "done" ? `요약을 살펴봄 · 제안 ${record.proposals ?? 0}개` : `요약 분석 실패 (${record.status})`, {
@@ -495,6 +500,14 @@ export class Runner {
       delete this.state.current;
     }
     await this.save();
+  }
+
+  /** "다시 살펴보기": 실패한 관찰자 실행·시스템 요약 분석을 바로 다시 한다 (API 키를 고친 뒤). 다시 할 일 수 */
+  async retryObservations(): Promise<number> {
+    const count = this.observer.retryFailed(this.state) + (this.system.retryAnalysis(this.state) ? 1 : 0);
+    await this.save();
+    if (count) void this.tick();
+    return count;
   }
 
   /** 시스템 관찰이 모은 기록을 지운다. 읽은 위치는 남겨, 지운 기록을 다시 읽어 오지 않게 한다 */

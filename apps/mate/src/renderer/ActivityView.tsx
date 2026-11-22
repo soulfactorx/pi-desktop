@@ -49,6 +49,37 @@ export function ActivityView({ overview, now, act }: { overview: Overview; now: 
 
       {watching && <LivePanel live={view.live} now={now} alive={overview.runner.alive} />}
 
+      {view.failed.length > 0 && (
+        <div className="card observe-failed" role="status">
+          <div>
+            <strong>제대로 살펴보지 못한 관찰 {view.failed.length}건</strong>
+            <span className="muted small-text">
+              {" "}
+              관찰자 실행이 실패했습니다 (API 키 만료·로그인 끊김 등). 키를 고친 뒤 다시 살펴보세요.
+              {view.retryAt ? ` 자동으로 ${relativeTime(view.retryAt, now)} 다시 합니다.` : " 세 번 실패해 자동으로는 다시 하지 않습니다."}
+            </span>
+          </div>
+          <ul className="small-text">
+            {view.failed.map((f, i) => (
+              <li key={i}>
+                {f.title}
+                <span className="muted">
+                  {" "}
+                  · {TOPIC_LABELS[f.topic as InsightTopic] ?? f.topic} · {f.status} {f.attempts > 1 ? `${f.attempts}번` : ""}
+                  {f.at ? ` · ${relativeTime(f.at, now)}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="row">
+            <button type="button" className="primary" disabled={!overview.runner.alive} onClick={() => void act(() => window.mate.observeRetry())}>
+              다시 살펴보기
+            </button>
+            {!overview.runner.alive && <span className="muted small-text">실행기가 꺼져 있습니다</span>}
+          </div>
+        </div>
+      )}
+
       {observe.enabled && (
         <>
           <div className="row">

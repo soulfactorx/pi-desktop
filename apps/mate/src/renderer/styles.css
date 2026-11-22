@@ -1618,3 +1618,17 @@ img.zoomable {
     font-size: 26px;
   }
 }
+
+/* 실패한 관찰 (API 키 만료 등): 다시 살펴보기 */
+.observe-failed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--warn);
+}
+.observe-failed ul {
+  margin: 0;
+  padding-left: 18px;
+}

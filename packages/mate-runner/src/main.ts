@@ -98,6 +98,7 @@ async function daemon(): Promise<void> {
       shutdown: () => void shutdown(),
       setTelegramToken: (token) => runner.setTelegramToken(token),
       clearSystem: () => runner.clearSystem(),
+      retryObservations: () => runner.retryObservations(),
     }),
     (message) => void log(paths, message),
   );
