@@ -36,6 +36,26 @@ describe("트레이", () => {
     expect(labels(trayMenuTemplate(undefined, actions))).toEqual(["Pi Desktop 열기", "끝내기 (Mate 실행기는 계속 돎)"]);
   });
 
+  it("업데이트: 상태에 따라 확인·받기·설치 줄을 끝내기 앞에 보이고, 확인하지 않는 실행에서는 없다", () => {
+    const base = { current: "0.7.39", mode: "auto" as const };
+    const checkForUpdates = vi.fn();
+    const installUpdate = vi.fn();
+    const withUpdate = (state: object) => ({ ...actions, updateState: () => ({ ...base, ...state }) as never, checkForUpdates, installUpdate });
+    const line = (state: object) => labels(trayMenuTemplate(undefined, withUpdate(state))).at(-2);
+    expect(line({ status: "none" })).toBe("업데이트 확인 (지금 v0.7.39)");
+    expect(line({ status: "checking" })).toBe("업데이트 확인 중…");
+    expect(line({ status: "available", version: "0.7.40" })).toBe("⬆ 새 버전 v0.7.40 받기 (지금 v0.7.39)");
+    expect(line({ status: "downloading", percent: 42 })).toBe("업데이트 받는 중 42%…");
+    expect(line({ status: "downloaded", version: "0.7.40" })).toBe("⬆ 다시 시작해 v0.7.40 설치");
+    expect(labels(trayMenuTemplate(undefined, withUpdate({ status: "disabled" })))).toEqual(["Pi Desktop 열기", "끝내기 (Mate 실행기는 계속 돎)"]);
+    const items = trayMenuTemplate(undefined, withUpdate({ status: "idle" }));
+    items.find((i) => i.label?.startsWith("업데이트 확인"))!.click!({} as never, undefined, {} as never);
+    expect(checkForUpdates).toHaveBeenCalled();
+    trayMenuTemplate(undefined, withUpdate({ status: "downloaded", version: "0.7.40" }))
+      .find((i) => i.label?.startsWith("⬆ 다시 시작"))!.click!({} as never, undefined, {} as never);
+    expect(installUpdate).toHaveBeenCalled();
+  });
+
   it("보지 않은 알림을 수·목록으로 보이고, 누르면 그곳으로 가며 읽은 것으로 친다", () => {
     const now = Date.now();
     const alerts = new PendingAlerts();

@@ -403,6 +403,10 @@ app.whenReady().then(() => {
         mainWindow.setOverlayIcon(count > 0 ? nativeImage.createFromPath(resourceFile("alert-dot.png")) : null, count > 0 ? `새 알림 ${count}건` : "");
       }
     },
+    // 업데이트: 창이 닫혀 있어도 트레이에서 확인·설치한다 (updaterRef는 아래에서 만든다)
+    updateState: () => updaterRef?.current ?? { status: "disabled", current: app.getVersion(), mode: "auto" },
+    checkForUpdates: () => void updaterRef?.check(true),
+    installUpdate: () => void updaterRef?.install(),
     quit: () => app.quit(),
   }, resourceFile("tray-alert.png"));
   // 알림 센터의 알림을 누르면 Windows가 앱 주소로 이 앱을 연다 (Agent·Mate 알림, app-notification.ts). 설치본만 등록한다
@@ -414,7 +418,11 @@ app.whenReady().then(() => {
   // 자동 업데이트 (설치한 앱에서만 확인한다)
   // 설치 직전에 Mate 작업 공간의 실행기를 멈춘다 (실행기가 이 앱 실행 파일을 Node로 쓰면 설치 파일을 잡고 있지 않게)
   const updater = new Updater(
-    (state) => sendToRenderer(IpcChannels.updateStateChanged, state),
+    (state) => {
+      sendToRenderer(IpcChannels.updateStateChanged, state);
+      // 트레이 메뉴의 업데이트 줄도 바꾼다
+      void appTray?.refresh();
+    },
     () => mainWindow,
     () => workspaces.beforeInstall(),
   );

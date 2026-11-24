@@ -1404,6 +1404,19 @@ body.resizing-columns iframe {
   opacity: 1;
 }
 
+/*
+ * 단추가 보이는 동안(마우스를 올림·키보드로 단추에 감) 이름 줄 오른쪽을 비워, 단추가 이름 글자 위에 겹치지 않게 한다.
+ * 이름은 줄여 …로 보인다. 아래 줄(폴더·시각)은 단추와 겹치지 않으므로 그대로 둔다. 실행 중 줄은 ✎·🗑·✕, 기록 줄은 📦·🗑
+ */
+:root:not([data-client="web"]) .session-row:hover .session-name,
+:root:not([data-client="web"]) .session-row:focus-within .session-name {
+  margin-right: 74px;
+}
+:root:not([data-client="web"]) .history-row:hover .session-name,
+:root:not([data-client="web"]) .history-row:focus-within .session-name {
+  margin-right: 50px;
+}
+
 /* 실행 중 세션 닫기 ✕ (줄에 마우스를 올리면 보인다) */
 .close-session-button {
   position: absolute;
