@@ -1,5 +1,6 @@
 import { Menu, nativeImage, Tray, type MenuItemConstructorOptions } from "electron";
 import type { MateLocalStatus } from "../../../mate/src/main/mate-main";
+import type { UpdateState } from "../shared/api";
 import type { NotificationRoute } from "./app-notification";
 import { pendingAlerts, type PendingAlert } from "./pending-alerts";
 
@@ -22,6 +23,12 @@ export interface TrayActions {
   openRoute(route: NotificationRoute): void;
   /** 새 알림 수가 바뀌었다 (작업 표시줄 표시 등) */
   alertsChanged?(count: number): void;
+  /** 앱 업데이트 상태 (개발 실행 등 확인하지 않는 곳은 disabled) */
+  updateState?(): UpdateState;
+  /** 업데이트를 확인한다 (새 버전이 있으면 받을지 묻는다) */
+  checkForUpdates?(): void;
+  /** 내려받은 업데이트를 설치하며 다시 시작한다 */
+  installUpdate?(): void;
   quit(): void;
 }
 
@@ -89,8 +96,28 @@ export function trayMenuTemplate(
       ...(status.alive ? [] : [{ label: "Mate 실행기 시작", click: () => void actions.startMate() }]),
     );
   }
-  items.push({ type: "separator" }, { label: "끝내기 (Mate 실행기는 계속 돎)", click: () => actions.quit() });
+  const update = updateMenuItem(actions);
+  items.push({ type: "separator" }, ...(update ? [update] : []), { label: "끝내기 (Mate 실행기는 계속 돎)", click: () => actions.quit() });
   return items;
+}
+
+/** 업데이트 한 줄: 상태에 따라 확인·받기·설치. 업데이트를 확인하지 않는 실행(개발·로컬 빌드)에서는 없다 */
+function updateMenuItem(actions: TrayActions): MenuItemConstructorOptions | undefined {
+  const state = actions.updateState?.();
+  if (!state || state.status === "disabled") return undefined;
+  const check = () => actions.checkForUpdates?.();
+  switch (state.status) {
+    case "checking":
+      return { label: "업데이트 확인 중…", enabled: false };
+    case "available":
+      return { label: `⬆ 새 버전 v${state.version ?? ""} ${state.mode === "auto" ? "받기" : "보기"} (지금 v${state.current})`, click: check };
+    case "downloading":
+      return { label: `업데이트 받는 중${state.percent !== undefined ? ` ${state.percent}%` : ""}…`, enabled: false };
+    case "downloaded":
+      return { label: `⬆ 다시 시작해 v${state.version ?? ""} 설치`, click: () => actions.installUpdate?.() };
+    default:
+      return { label: `업데이트 확인 (지금 v${state.current})`, click: check };
+  }
 }
 
 export interface AppTray {
