@@ -100,6 +100,12 @@ function createWindow(): void {
   });
   if (windowState.maximized) mainWindow.maximize();
   trackWindowState(mainWindow, windowStateFile);
+  // 창을 닫으면(트레이에 남음) 놓는다. 닫힌 창 객체를 쓰면 "Object has been destroyed" 오류가 나서,
+  // 창이 없는 동안 Mate 알림이 트레이에 남지 않았다 (보고 있는지 묻다가 멈춤)
+  const created = mainWindow;
+  created.on("closed", () => {
+    if (mainWindow === created) mainWindow = undefined;
+  });
   // 새 창으로 연 작업 공간에서 돌아오면 메뉴바를 이 창의 작업 공간에 맞춘다
   mainWindow.on("focus", () => {
     setAppMenu();
@@ -149,7 +155,7 @@ let sshHostsRef: SshHostStore | undefined;
 
 /** 작업 공간 (DESIGN-ONE-APP.md). 지금은 Agent·Mate 미리 보기 */
 const workspaces = new Workspaces({
-  window: () => mainWindow,
+  window: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined),
   // 트레이에만 있을 때 알림·트레이 메뉴로 작업 공간을 열면 창부터 연다
   openWindow: () => {
     createWindow();
