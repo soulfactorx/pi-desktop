@@ -117,6 +117,15 @@ function createWindow(): void {
     if (url !== mainWindow?.webContents.getURL()) event.preventDefault();
   });
   guardFrameNavigation(mainWindow);
+  // 창을 닫았다 다시 열면(트레이·독·다시 실행) 화면은 Pi로 새로 뜨지만, 메뉴바는 마지막에 보던 작업 공간(Mate 등)의 것이 남는다.
+  // 마지막에 보던 작업 공간을 다시 보여 화면과 메뉴바를 맞춘다 (앱을 처음 켤 때는 Pi다)
+  const last = workspaces.current;
+  if (last !== "pi") {
+    mainWindow.webContents.once("did-finish-load", () => {
+      if (workspaces.enabled(last)) workspaces.show(last);
+      else workspaces.shown("pi");
+    });
+  }
 
   // 개발 서버 주소는 개발 실행에서만 쓴다. 설치본이 환경 변수의 주소를 열면 그 페이지가 preload의 앱 API(명령 실행 등)를 갖게 된다.
   if (process.env.ELECTRON_RENDERER_URL && !app.isPackaged) {

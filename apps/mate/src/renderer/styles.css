@@ -1492,10 +1492,14 @@ ul.activity-details {
   font-size: 12px;
 }
 
-/* 대화에서 고른 글을 인용해 다시 묻는 단추 (QuoteAsk) */
-.quote-ask {
+/* 대화에서 고른 글을 인용해 다시 묻거나 복사하는 단추 (QuoteAsk) */
+.quote-ask-bar {
   position: fixed;
   z-index: 1000;
+  display: flex;
+  gap: 6px;
+}
+.quote-ask {
   padding: 5px 12px;
   border: 1px solid var(--accent);
   border-radius: 999px;
