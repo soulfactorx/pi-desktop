@@ -1,5 +1,5 @@
 import { BrowserWindow, Notification } from "electron";
-import { pendingAlerts } from "./pending-alerts";
+import { pendingAlerts, type PendingAlert } from "./pending-alerts";
 
 /**
  * OS 알림과, 알림을 눌렀을 때 갈 곳 (Agent·Mate 작업 공간의 알림).
@@ -72,9 +72,25 @@ const kept = new Set<Notification>();
 const KEEP_MAX = 50;
 
 /**
- * 알림을 띄운다. onClick은 화면에 떠 있는 알림을 눌렀을 때, route는 Windows 알림 센터에서 눌렀을 때 쓴다.
+ * 앱 창을 보고 있지 않으면 트레이의 "새 알림"으로 남긴다 (pending-alerts.ts, tray.ts). 남겼으면 그 항목.
+ * PC 팝업을 끈 알림(Mate의 "PC 알림" 끔, 휴대폰으로 간 것)도 트레이 아이콘·작업 표시줄에는 보이게 따로 부른다
  */
-export function showAppNotification(options: { title: string; body: string; silent?: boolean; route?: NotificationRoute; onClick: () => void }): void {
+export function addTrayAlert(title: string, body: string, route?: NotificationRoute): PendingAlert | undefined {
+  return BrowserWindow.getFocusedWindow() ? undefined : pendingAlerts.add({ title, body, ...(route ? { route } : {}), at: Date.now() });
+}
+
+/**
+ * 알림을 띄운다. onClick은 화면에 떠 있는 알림을 눌렀을 때, route는 Windows 알림 센터에서 눌렀을 때 쓴다.
+ * alert: 이미 addTrayAlert로 남긴 트레이 항목 (주면 다시 남기지 않는다. null이면 남기지 않는다)
+ */
+export function showAppNotification(options: {
+  title: string;
+  body: string;
+  silent?: boolean;
+  route?: NotificationRoute;
+  onClick: () => void;
+  alert?: PendingAlert | null;
+}): void {
   const { title, body, route, onClick } = options;
   const notification = new Notification({
     title,
@@ -85,7 +101,7 @@ export function showAppNotification(options: { title: string; body: string; sile
   kept.add(notification);
   if (kept.size > KEEP_MAX) kept.delete(kept.values().next().value!);
   // 앱 창을 보고 있지 않으면 트레이에 "새 알림"으로 남긴다 (pending-alerts.ts, tray.ts)
-  const pending = BrowserWindow.getFocusedWindow() ? undefined : pendingAlerts.add({ title, body, ...(route ? { route } : {}), at: Date.now() });
+  const pending = options.alert === undefined ? addTrayAlert(title, body, route) : (options.alert ?? undefined);
   notification.on("click", () => {
     kept.delete(notification);
     if (pending) pendingAlerts.remove(pending.id);
