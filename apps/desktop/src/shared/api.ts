@@ -744,5 +744,10 @@ export interface WorkspacesState {
   /** 켠 플러그인 작업 공간과 그 화면 주소. 주소가 없으면 이 실행에서는 열 수 없다 (reason) */
   /** unread: 그 작업 공간을 보지 않는 동안 생긴 알림 수 (보면 0) */
   plugins: Array<{ id: PluginWorkspaceId; name: string; enabled: boolean; url?: string; reason?: string; unread?: number }>;
+  /**
+   * main이 기억하는 지금 작업 공간. 창을 닫았다 다시 열면(트레이) 화면은 새로 뜨므로, 처음 읽을 때 이것을 다시 보인다
+   * (메뉴바도 이것을 따른다). 휴대폰 웹은 없다
+   */
+  active?: WorkspaceId;
 }
 

@@ -99,6 +99,7 @@ export class Workspaces {
         const unread = this.unread[p.id] ?? 0;
         return { id: p.id, name: p.name, enabled, ...(unread > 0 ? { unread } : {}), ...(reason ? { reason } : { url: pathToFileURL(file).href }) };
       }),
+      active: this.active,
     };
   }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceId, WorkspacesState } from "../shared/api";
 import { App } from "./App";
 import { isWebClient } from "./clipboard-images";
@@ -38,6 +38,8 @@ export function Shell() {
   const refresh = useCallback(() => {
     window.piDesktop.workspacesState().then(setState, () => setState(undefined));
   }, []);
+  // 창을 다시 열었을 때(트레이): main이 기억하는 작업 공간을 처음 한 번 다시 보인다 (메뉴바와 화면을 맞춘다)
+  const restored = useRef(false);
 
   const show = useCallback((id: WorkspaceId) => {
     setActive(id);
@@ -69,6 +71,14 @@ export function Shell() {
   }, [refresh, show]);
 
   const plugins = (state?.plugins ?? []).filter((p) => p.enabled && p.url);
+  // 처음 상태를 읽으면 main이 기억하는 작업 공간으로 (트레이로 다시 연 창). 그 작업 공간을 꺼 두었으면 Pi로 맞춘다
+  useEffect(() => {
+    if (!state || restored.current) return;
+    restored.current = true;
+    const want = state.active;
+    if (want && want !== active) show(want === "pi" || plugins.some((p) => p.id === want) ? want : "pi");
+  }, [state, active, plugins, show]);
+
   // 꺼진 플러그인을 보고 있었으면 Pi로 돌아간다
   useEffect(() => {
     if (active !== "pi" && state && !plugins.some((p) => p.id === active)) show("pi");
