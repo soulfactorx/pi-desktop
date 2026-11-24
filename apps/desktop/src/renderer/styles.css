@@ -429,6 +429,36 @@ button.badge.warn {
 .muted,
 .working {
   color: var(--muted);
+  font-size: 13px;
+}
+/* 작업 중 표시: 깜빡이는 점 · 지금 하는 일 · 걸린 시간. 새 출력이 오래 없으면 경고색과 안내 (ChatView의 Working) */
+.working-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+  animation: working-pulse 1.2s ease-in-out infinite;
+}
+@keyframes working-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+.working-doing {
+  color: var(--text);
+}
+.working.quiet .working-dot {
+  background: var(--warn);
+}
+.working-quiet {
+  color: var(--warn);
+}
+.working-hint {
+  margin-top: 2px;
+  font-size: 12px;
 }
 
 /* 대화 폭은 창 폭을 따라간다. 고정 최대 폭을 두면 창을 키워도 내용이 넓어지지 않고 멈춘다 */
