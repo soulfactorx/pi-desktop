@@ -12,6 +12,8 @@ export interface Note {
   body: string;
   /** 누르면 열 탭 (대화 줄·실행 기록·인박스) */
   target?: NoteTarget;
+  /** 휴대폰에서 나눈 대화의 답·결과: 휴대폰으로 이미 갔으므로 PC 팝업은 띄우지 않고 트레이의 새 알림에만 남긴다 */
+  phone?: boolean;
 }
 
 export type NoteTarget = "chat" | "runs" | "inbox";
@@ -47,9 +49,14 @@ export function newNotes(prev: NoteState | undefined, overview: Overview): { not
     if (prev.chat.has(line.id) || line.role !== "mate") continue;
     if (line.runId) coveredRuns.add(line.runId);
     if (line.kind === "question") notes.push({ title: "Mate의 질문", body: clip(line.text), target: "chat" });
-    // 휴대폰에서 나눈 대화의 답·결과는 휴대폰으로 간다
-    else if ((line.kind === "reply" || line.kind === "result") && line.source !== "telegram") {
-      notes.push({ title: line.kind === "reply" ? "Mate" : "Mate 실행 결과", body: clip(line.text), target: "chat" });
+    // 휴대폰에서 나눈 대화의 답·결과는 휴대폰으로 간다 (PC에는 트레이의 새 알림으로만)
+    else if (line.kind === "reply" || line.kind === "result") {
+      notes.push({
+        title: line.kind === "reply" ? "Mate" : "Mate 실행 결과",
+        body: clip(line.text),
+        target: "chat",
+        ...(line.source === "telegram" ? { phone: true } : {}),
+      });
     }
   }
   const notedRuns = new Set<string>();
@@ -69,8 +76,11 @@ export function newNotes(prev: NoteState | undefined, overview: Overview): { not
     if (prev.inbox.has(item.id) || item.status || notedRuns.has(item.runId) || coveredRuns.has(item.runId)) continue;
     notes.push({ title: `새 제안: ${clip(item.title, 60)}`, body: clip(item.summary), target: "inbox" });
   }
+  // 팝업 수 상한은 PC 팝업으로 띄우는 것만 센다 (휴대폰으로 간 것은 트레이에만 남으므로 뒤에 그대로 붙인다)
+  const phone = notes.filter((n) => n.phone);
+  const popups = notes.filter((n) => !n.phone);
   const maxNotes = appNum("app.notifyMaxNotes");
-  if (notes.length <= maxNotes) return { notes, state };
-  const rest = notes.length - (maxNotes - 1);
-  return { notes: [...notes.slice(0, maxNotes - 1), { title: `Mate 알림 ${rest}건 더`, body: "앱에서 확인하세요", target: "inbox" }], state };
+  if (popups.length <= maxNotes) return { notes: [...popups, ...phone], state };
+  const rest = popups.length - (maxNotes - 1);
+  return { notes: [...popups.slice(0, maxNotes - 1), { title: `Mate 알림 ${rest}건 더`, body: "앱에서 확인하세요", target: "inbox" }, ...phone], state };
 }

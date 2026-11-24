@@ -34,7 +34,7 @@ describe("PC 알림 (notifier)", () => {
     expect(done.notes).toEqual([{ title: "임무 실패: 아침 날씨", body: "시간 초과", target: "runs" }]);
   });
 
-  it("대화 결과가 있는 실행과 그 실행의 제안은 따로 알리지 않고, 휴대폰 대화의 답은 PC에 알리지 않는다", () => {
+  it("대화 결과가 있는 실행과 그 실행의 제안은 따로 알리지 않고, 휴대폰 대화의 답은 PC 팝업 없이 트레이에만 남긴다(phone)", () => {
     const base = newNotes(undefined, overview({})).state;
     const { notes } = newNotes(
       base,
@@ -56,6 +56,7 @@ describe("PC 알림 (notifier)", () => {
       { title: "Mate 실행 결과", body: "브리핑 끝", target: "chat" },
       { title: "임무 완료: 아침 날씨 · 제안 1건", body: "s", target: "inbox" },
       { title: "새 제안: 린트 경고", body: "경고 3개", target: "inbox" },
+      { title: "Mate", body: "휴대폰 답", target: "chat", phone: true },
     ]);
   });
 

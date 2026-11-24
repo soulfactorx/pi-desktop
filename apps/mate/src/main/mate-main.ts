@@ -1,5 +1,5 @@
 import { app, dialog, ipcMain, Notification, shell, type BrowserWindow } from "electron";
-import { showAppNotification } from "../../../desktop/src/main/app-notification";
+import { addTrayAlert, showAppNotification } from "../../../desktop/src/main/app-notification";
 import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { readInbox } from "@pi-desktop/mate-kit";
@@ -277,16 +277,21 @@ export function createMateMain(ctx: MateMainContext): MateMain {
     }
     const { notes: fresh, state } = newNotes(notes, current);
     notes = state;
-    if (fresh.length > 0 && !ctx.isViewing()) ctx.onNotify?.();
-    if (!current.config.desktopNotify || !Notification.isSupported() || ctx.isViewing()) return;
+    if (fresh.length === 0 || ctx.isViewing()) return;
+    ctx.onNotify?.();
+    const popup = current.config.desktopNotify && Notification.isSupported();
     for (const note of fresh) {
       const tab = note.target ?? "inbox";
+      // 트레이 아이콘·작업 표시줄의 새 알림은 PC 팝업을 꺼 두었거나(휴대폰으로 받음) 휴대폰으로 간 것이어도 남긴다
+      const alert = addTrayAlert(note.title, note.body, { workspace: "mate", tab }) ?? null;
+      if (!popup || note.phone) continue;
       // 창(합친 앱이면 Mate 작업 공간)을 앞으로 가져온 뒤, 화면이 준비되면 그 알림의 탭을 연다.
       // Windows 알림 센터에서 누르면 route로 앱이 열려 같은 곳으로 간다 (app-notification.ts)
       showAppNotification({
         title: note.title,
         body: note.body,
         route: { workspace: "mate", tab },
+        alert,
         onClick: () => ctx.reveal(() => ctx.send(IpcChannels.openTab, tab)),
       });
     }
